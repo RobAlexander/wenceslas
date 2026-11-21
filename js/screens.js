@@ -177,7 +177,6 @@ function titleScreen(env) {
       ctx.drawImage(tr.img, x - 8, y - tr.h + 1);
     }
     bigText(ctx, 'WENCESLAS', 36, PAL.y, 6, PAL.r);
-    drawText(ctx, 'A WINTER NIGHT\'S ERRAND', W / 2, 92, PAL.w, { scale: 2, align: 'center' });
     menu.draw(ctx, s.t);
 
     caption(ctx, say(env, 'WASD OR ARROWS AND ENTER, OR USE THE MOUSE', 'TAP A BUTTON'), 262);
@@ -224,7 +223,7 @@ function pauseScreen(env) {
     box(ctx, W / 2 - 110, 86, 220, 120);
     drawText(ctx, 'PAUSED', W / 2, 100, PAL.y, { scale: 3, align: 'center' });
     menu.draw(ctx, s.t);
-    drawText(ctx, say(env, 'ESC TO RESUME', 'TAP RESUME TO CONTINUE'), W / 2, 192, PAL.n, { align: 'center' });
+    drawText(ctx, say(env, 'ESC TO RESUME    M TO MUTE', 'TAP RESUME TO CONTINUE'), W / 2, 192, PAL.n, { align: 'center' });
   };
   return s;
 }
@@ -343,15 +342,17 @@ function makePearTree() {
 
 
 function endingScreen(env) {
-  const s = { overlay: false, t: 0, data: null, tree: null };
+  const s = { overlay: false, t: 0, data: null, tree: null, called: false };
   s.enter = (d) => {
     s.data = d;
     s.t = 0;
+    s.called = false;
     s.tree = s.tree || makePearTree();
     env.scores.unlockHard();
   };
   s.update = (dt) => {
     s.t += dt;
+    if (!s.called && s.t > 1.0) { s.called = true; env.events.push('partridge'); }   // as it lands in the tree
     const pressed = env.input.takeKeys().length > 0 || env.input.takeClick();
     if (pressed && s.t > 1.5) { env.events.push('menuSelect'); env.actions.finishRun(s.data); }
   };

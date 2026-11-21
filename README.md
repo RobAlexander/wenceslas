@@ -17,7 +17,7 @@ Optional URL parameters for testing, ignored in normal play:
 
 ### PC
 
-WASD to move, mouse to aim, left-click to swing. Esc or P to pause. F toggles fullscreen.
+WASD to move, mouse to aim, left-click to swing. Esc or P to pause. F toggles fullscreen, M mutes (and remembers it).
 The game scales to fill the window, keeping 16:9 (with bars if needed).
 In menus: W/S or the arrow keys to move, Enter or Space to choose, or just use the mouse.
 Initials entry: type letters, or use the arrow keys (or click the arrows on screen); Enter to confirm.
@@ -37,6 +37,22 @@ This is untested on real hardware; it follows the standard gamepad layout.
 
 The game aims with whichever device you used last, so you can switch between mouse, touch and gamepad at any time.
 
+## Sound and music
+
+Sound starts at the first key press or click, because browsers don't allow it sooner.
+
+- **Effects** are 14 sampled sounds in `audio/sfx/` (mono, 8-bit, 11 kHz WAV, Amiga style).
+  Seven are trimmed from the CC0 "50 RPG sound effects" pack by Kenney (via OpenGameArt) and seven are synthesised.
+  Every file is listed with its source, author and licence in `CREDITS.md`.
+- **Music** is played by a small four-channel tracker-style player (`js/music.js`) on the Web Audio API. There are no
+  music files: the song is pattern data in `js/music-data.js`, and the instrument samples (bell, choir, strings, bass,
+  percussion) are generated in code as short 8-bit samples with loop points.
+- **Adaptive:** each night starts with just the opening phrase, played slowly on a bell. As food is delivered the music
+  adds the bass, then strings, then percussion, then a choir, and plays more of the carol until it plays the whole tune.
+  Stages change only at phrase boundaries, and without progress the music keeps looping at its current stage.
+- **The tune is a draft.** The melody in `js/music-data.js` is a transcription from memory and hasn't been checked
+  against a score. To correct it, edit the `lead` strings there; nothing else depends on the notes.
+
 ## Development
 
 - `npm test` runs all of the checks below. None of them needs a browser.
@@ -47,7 +63,15 @@ The game aims with whichever device you used last, so you can switch between mou
 - `npm run smoke`: headless simulation of 24 nights with a simple bot, to catch runtime errors in the logic and drawing code.
 - `node tests/snapshot.mjs out.png [seed] [night] [seconds]`: renders a gameplay frame to PNG.
 
-`node_modules/`, `tests/` and `package.json` are for development only; don't deploy them.
+- `tests/music.mjs`, `tests/audio.mjs`, `tests/sfx.mjs`: the music engine and its stage rules, the audio module against a fake
+  AudioContext, and the shipped sound files against the brief (mono, 8-bit, low rate, credited).
+- `tools/fetch_audio.sh` downloads the third-party source clips into `audio/source/` (not kept in git), and
+  `tools/build_sounds.py` rebuilds every file in `audio/sfx/` and `CREDITS.md` from them. It needs ffmpeg and SoX.
+- `node tools/render_music.mjs [dir]` mixes each music stage, and a whole night's build-up, to WAV files so you can
+  listen without running the game (default folder `music-out/`).
+
+**To deploy,** copy `index.html`, `js/` and `audio/sfx/` to any web server. Everything else (`audio/source/`, `tools/`,
+`tests/`, `node_modules/`, `package.json`) is for development only.
 
 ## Design decisions (beyond the brief)
 

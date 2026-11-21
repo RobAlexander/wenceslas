@@ -23,6 +23,22 @@ Object.assign(globalThis, {
     createElement: (t) => (t === 'canvas' ? createCanvas(1, 1) : {}),
   },
 });
+const audioLog = { contexts: 0, started: [] };
+const gainParam = () => ({ value: 1, setValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {} });
+globalThis.AudioContext = class {
+  constructor() { audioLog.contexts++; this.currentTime = 0; this.state = 'running'; this.destination = {}; }
+  resume() {} suspend() {}
+  decodeAudioData(bytes, ok) { ok({ sfx: /sfx\/(\w+)\.wav/.exec(new TextDecoder().decode(bytes))[1] }); }
+  createBuffer() { return { copyToChannel() {} }; }
+  createGain() { return { gain: gainParam(), connect() {} }; }
+  createStereoPanner() { return { pan: { value: 0 }, connect() {} }; }
+  createBufferSource() {
+    const src = { playbackRate: { value: 1 }, connect() {}, stop() {}, start() { audioLog.started.push(src); } };
+    return src;
+  }
+};
+globalThis.fetch = async (url) => ({ ok: true, arrayBuffer: async () => new TextEncoder().encode(String(url)).buffer });
+const sfxPlayed = () => audioLog.started.filter((s) => s.buffer?.sfx).map((s) => s.buffer.sfx);
 Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => [padNow] }, configurable: true });
 Object.defineProperty(globalThis, 'performance', { value: { now: () => now }, configurable: true });
 
@@ -38,6 +54,10 @@ const mouse = (x, y) => { fire(handlers, 'pointermove', { pointerType: 'mouse', 
 
 secs(0.5);
 assert.equal(game.state, 'title');
+
+// sound: nothing happens until the first key press or click
+assert.equal(audioLog.contexts, 0, 'no audio before a gesture');
+assert.equal(game.audio.ready, false);
 
 // scaling: the visible canvas is a whole-number upscale of 640x360, and its CSS
 // size fills the window at 16:9
@@ -67,11 +87,22 @@ secs(0.2);
 
 // F toggles fullscreen
 key('KeyF'); assert.equal(fullscreenCalls, 1);
+assert.equal(audioLog.contexts, 1, 'a key press starts audio');
+// M mutes and unmutes
+key('KeyM'); assert.equal(game.audio.muted, true);
+const heard = sfxPlayed().length;
+game.audio.handle(['hit']); assert.equal(sfxPlayed().length, heard, 'no effects while muted');
+key('KeyM'); assert.equal(game.audio.muted, false);
 
 // title: start with Enter; first item is START
 key('Enter');
 assert.equal(game.state, 'play');
 assert.equal(game.night, 1);
+await new Promise((r) => setImmediate(r));                           // let the effects finish loading
+assert.equal(audioLog.contexts, 1, 'audio is only started once');
+assert.equal(game.audio.loaded.length, 14, 'all 14 effects loaded');
+assert.equal(game.audio.music.running, true);
+assert.equal(game.audio.music.stage, 0, 'a night opens with the first phrase');
 
 // play: hold D to walk right, mouse aim, swing
 let x0 = game.world.king.x;
@@ -81,6 +112,7 @@ click(500, 100);
 secs(1);
 fire(handlers, 'keyup', { code: 'KeyD' });
 assert.ok(game.world.king.x > x0 + 20, 'king moved right');
+assert.ok(sfxPlayed().includes('swing'), 'the click swung the sword, and it made a sound');
 
 // pause with Escape, resume with Escape; then quit via the menu
 key('Escape'); assert.equal(game.state, 'paused');
@@ -203,11 +235,14 @@ for (let n = 1; n <= 12; n++) {
 assert.equal(game.state, 'ending');
 const score = game.score;
 game.score = Math.max(score, 1234); // make sure it qualifies even though the nights were skipped
+assert.equal(game.audio.music.pendingStage ?? game.audio.music.stage, 4, 'the whole carol at the ending');
 secs(1.7);
+assert.ok(sfxPlayed().includes('partridge'), 'the partridge calls');
 key('Enter');
 assert.equal(game.state, 'initials');
 key('KeyF');                                   // a letter here, not fullscreen
 assert.equal(fullscreenCalls, fsAfterTouch);
+key('KeyM'); assert.equal(game.audio.muted, false);   // nor mute
 key('KeyW'); key('KeyE'); key('KeyN');
 key('Enter');
 assert.equal(game.state, 'highscores');
@@ -225,6 +260,7 @@ assert.equal(game.night, 1);
 game.world.king.hp = 0; game.world.dead = true;
 frames(2);
 assert.equal(game.state, 'gameover');
+assert.equal(game.audio.music.running, false, 'game over stops the music');
 secs(1.2);
 key('Enter');
 assert.equal(game.state, 'highscores');
@@ -238,3 +274,4 @@ secs(0.5); click();
 assert.equal(game.state, 'title');
 
 console.log('boot: full flow passed');
+process.exit(0);   // the music's timer would otherwise keep Node running

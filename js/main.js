@@ -7,6 +7,7 @@ import { World } from './world.js';
 import { createInput } from './input.js';
 import { createTouch } from './touch.js';
 import { createGamepad } from './gamepad.js';
+import { createAudio } from './audio.js';
 import { makeGround, makeSnow, updateSnow, drawWorld, drawHud, drawCrosshair, drawPanel } from './render.js';
 import { drawText } from './font.js';
 import { scores } from './highscores.js';
@@ -62,7 +63,9 @@ function enterFullscreen() {
 const portraitTouch = () => innerHeight > innerWidth && !!globalThis.matchMedia?.('(pointer: coarse)').matches;
 
 addEventListener('keydown', (e) => {
-  if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials') toggleFullscreen();
+  const plain = !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials';
+  if (e.code === 'KeyF' && plain) toggleFullscreen();
+  if (e.code === 'KeyM' && plain) audio.toggleMute();
 });
 
 // Test hooks, all optional and ignored in normal play:
@@ -97,16 +100,23 @@ const game = {
 window.__wenceslas = game; // handy for debugging and automated tests
 game.input = input;
 
+// Sound starts at the first key press or click: browsers don't allow it before that.
+const audio = createAudio();
+game.audio = audio;
+for (const type of ['pointerdown', 'keydown', 'touchend']) addEventListener(type, () => audio.unlock(), { passive: true });
+
 const touch = createTouch(input, canvas, { isPlaying: () => game.state === 'play', onFirstTap: enterFullscreen });
 const pad = createGamepad(input);
 
 // ---------- flow ----------
 
 function setState(name, data) {
+  const prev = game.state;
   game.state = name;
   game.screen = screens[name] || null;
   game.stateT = 0;
   input.clearPresses();
+  audio.onState(name, prev);
   if (game.screen) game.screen.enter(data);
 }
 
@@ -248,6 +258,8 @@ function frame() {
     steps++;
   }
   if (steps === 5) acc = 0;
+  audio.handle(game.events);
+  if (game.state === 'play') audio.setProgress(Math.min(1, game.world.delivered / game.world.p.foodTarget));
   game.events.length = 0;
   draw();
   screenCtx.drawImage(buffer, 0, 0, canvas.width, canvas.height);
@@ -258,6 +270,7 @@ function frame() {
 addEventListener('blur', () => { if (game.state === 'play') setState('paused'); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.state === 'play') setState('paused');
+  if (document.hidden) audio.suspend(); else audio.resume();
 });
 
 // ---------- start ----------
