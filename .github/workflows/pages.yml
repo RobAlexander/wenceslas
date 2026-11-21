@@ -1,0 +1,55 @@
+# Publishes the game to GitHub Pages on every push to master.
+# Only the files the game needs are published; tests, tools and source audio stay out.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The tests that need nothing installed. The browser-flow tests need a native canvas
+      # library, so those are run locally with `npm test`.
+      - name: Check the game logic, audio and sound files
+        run: |
+          node tests/highscores.mjs
+          node tests/gamepad.mjs
+          node tests/music.mjs
+          node tests/audio.mjs
+          node tests/sfx.mjs
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/audio
+          cp index.html CREDITS.md LICENSE _site/
+          cp -r js _site/js
+          cp -r audio/sfx _site/audio/sfx
+          find _site -type f | sort
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

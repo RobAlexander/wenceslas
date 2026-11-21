@@ -1,7 +1,9 @@
 # Wenceslas
 
 A top-down action game based on *Good King Wenceslas*. Plain JavaScript, no build step:
-deploy by copying `index.html` and `js/` to any web server.
+deploy by copying `index.html`, `js/` and `audio/sfx/` to any web server.
+
+**Play it online: https://robalexander.github.io/wenceslas/**
 
 ## Run locally
 
@@ -87,3 +89,8 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - Hard mode is unlocked, and stays unlocked, once night 12 has been cleared.
 - Quitting from the pause menu doesn't record a score.
 - Robbers raise their club (with a red "!") for 0.35 s before a blow lands, so attacks can be read and interrupted.
+
+## Licence
+
+The code is released under the [MIT licence](LICENSE). The sound effects and music are credited in
+[CREDITS.md](CREDITS.md): some clips come from a CC0 pack by Kenney, and the rest are synthesised in this repository.
