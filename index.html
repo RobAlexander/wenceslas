@@ -6,13 +6,28 @@
 <title>Wenceslas</title>
 <style>
   html, body { margin: 0; height: 100%; background: #1a1c2c; overflow: hidden; }
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
   body { display: flex; align-items: center; justify-content: center; }
+  /* No scrolling, zooming, text selection or long-press menus: the page is a game. */
+  html, body, canvas {
+    touch-action: none; overscroll-behavior: none;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
   /* The game scales its own pixels up by whole numbers; the browser only shrinks the result slightly to fit, so smooth scaling is what we want here. */
-  canvas { cursor: none; display: block; touch-action: none; }
+  canvas { cursor: none; display: block; }
+  /* A phone held upright can't show the game properly: ask for landscape. */
+  #rotate {
+    display: none; position: fixed; inset: 0; z-index: 10; box-sizing: border-box; padding: 24px;
+    align-items: center; justify-content: center; text-align: center;
+    background: #1a1c2c; color: #ffcd75; font: bold 6vw/1.4 monospace;
+  }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
 </style>
 </head>
 <body>
 <canvas id="game" width="640" height="360"></canvas>
+<div id="rotate">PLEASE TURN YOUR DEVICE SIDEWAYS<br>(LANDSCAPE)</div>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

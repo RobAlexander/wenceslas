@@ -18,6 +18,7 @@ export const CFG = {
   swingHalfArc: 1.25,       // radians either side of the aim direction
   swingBuffer: 0.12,        // a click this close to the end of the cooldown is remembered
   swingKnockback: 170,
+  autoAimRange: 90,         // a touch tap turns the sword toward the nearest robber this close
 
   // Pages
   pageMaxHp: 2,

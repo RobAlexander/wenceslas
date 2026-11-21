@@ -213,6 +213,7 @@ export class World {
     k.cd -= dt;
     k.inv -= dt;
     if (inp.swing && k.cd <= 0) {
+      if (inp.autoAim) this.snapAim();
       k.swingT = CFG.swingDuration;
       k.cd = CFG.swingCooldown;
       k.swingAngle = k.aim;
@@ -223,6 +224,21 @@ export class World {
       k.swingT -= dt;
       this.swordHits();
     }
+  }
+
+  // Turn toward the nearest robber in range. Used by quick taps on touch screens;
+  // with nothing in range the king swings the way he's already facing.
+  snapAim() {
+    const k = this.king;
+    const py = k.y - 8;
+    let best = null, bd = CFG.autoAimRange;
+    for (const rob of this.robbers) {
+      const d = Math.hypot(rob.x - k.x, rob.y - 6 - py);
+      if (d < bd) { bd = d; best = rob; }
+    }
+    if (!best) return;
+    k.aim = Math.atan2(best.y - 6 - py, best.x - k.x);
+    k.face = Math.cos(k.aim) < 0 ? -1 : 1;
   }
 
   swordHits() {

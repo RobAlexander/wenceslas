@@ -71,6 +71,10 @@ function caption(ctx, str, y, color = PAL.w) {
   drawText(ctx, str, W / 2, y, color, { align: 'center', shadow: false });
 }
 
+// Prompt wording: touch players are told to tap, not to press Enter.
+const touchy = (env) => env.input.st.lastDevice === 'touch';
+const say = (env, keyboard, touch) => (touchy(env) ? touch : keyboard);
+
 function blink(t, rate = 2) { return Math.floor(t * rate) % 2 === 0; }
 
 // ---------- vertical menu ----------
@@ -176,7 +180,7 @@ function titleScreen(env) {
     drawText(ctx, 'A WINTER NIGHT\'S ERRAND', W / 2, 92, PAL.w, { scale: 2, align: 'center' });
     menu.draw(ctx, s.t);
 
-    caption(ctx, 'WASD OR ARROWS AND ENTER, OR USE THE MOUSE', 262);
+    caption(ctx, say(env, 'WASD OR ARROWS AND ENTER, OR USE THE MOUSE', 'TAP A BUTTON'), 262);
 
     // The king leads a line of pages across the bottom of the screen.
     const speed = 34, span = W + 150;
@@ -220,7 +224,7 @@ function pauseScreen(env) {
     box(ctx, W / 2 - 110, 86, 220, 120);
     drawText(ctx, 'PAUSED', W / 2, 100, PAL.y, { scale: 3, align: 'center' });
     menu.draw(ctx, s.t);
-    drawText(ctx, 'ESC TO RESUME', W / 2, 192, PAL.n, { align: 'center' });
+    drawText(ctx, say(env, 'ESC TO RESUME', 'TAP RESUME TO CONTINUE'), W / 2, 192, PAL.n, { align: 'center' });
   };
   return s;
 }
@@ -271,7 +275,7 @@ function nightEndScreen(env) {
       drawText(ctx, String(Math.floor(r.value * f)), x + w - 16, ry, col, { scale: 2, align: 'right' });
     });
     if (s.t >= LOCK) {
-      const msg = s.done() ? 'PRESS ENTER OR CLICK TO CONTINUE' : 'PRESS ANY KEY TO SKIP';
+      const msg = s.done() ? say(env, 'PRESS ENTER OR CLICK TO CONTINUE', 'TAP TO CONTINUE') : say(env, 'PRESS ANY KEY TO SKIP', 'TAP TO SKIP');
       if (!s.done() || blink(s.t, 2)) drawText(ctx, msg, W / 2, y + h - 14, PAL.n, { align: 'center' });
     }
   };
@@ -294,7 +298,7 @@ function gameOverScreen(env) {
     bigText(ctx, 'GAME OVER', 112, PAL.r, 4, PAL.k);
     drawText(ctx, 'YOU REACHED NIGHT ' + s.data.night, W / 2, 158, PAL.w, { scale: 2, align: 'center' });
     drawText(ctx, 'SCORE ' + s.data.score, W / 2, 182, PAL.y, { scale: 2, align: 'center' });
-    if (s.t > 1 && blink(s.t, 2)) drawText(ctx, 'PRESS ENTER OR CLICK', W / 2, 222, PAL.n, { align: 'center' });
+    if (s.t > 1 && blink(s.t, 2)) drawText(ctx, say(env, 'PRESS ENTER OR CLICK', 'TAP TO CONTINUE'), W / 2, 222, PAL.n, { align: 'center' });
   };
   return s;
 }
@@ -370,7 +374,7 @@ function endingScreen(env) {
     drawText(ctx, 'THE OLD MAN IS WARM AND FED.', W / 2, 282, PAL.w, { scale: 2, align: 'center' });
     drawText(ctx, 'FINAL SCORE ' + s.data.score, W / 2, 304, PAL.l, { scale: 2, align: 'center' });
     if (!s.data.hard) caption(ctx, 'HARD MODE UNLOCKED!', 324, PAL.y);
-    if (s.t > 1.5 && blink(s.t, 2)) caption(ctx, 'PRESS ENTER OR CLICK', 341);
+    if (s.t > 1.5 && blink(s.t, 2)) caption(ctx, say(env, 'PRESS ENTER OR CLICK', 'TAP TO CONTINUE'), 341);
     drawSnow(ctx, env.snow, true);
   };
   return s;
@@ -445,8 +449,8 @@ function initialsScreen(env) {
     }
     box(ctx, okRect.x, okRect.y, okRect.w, okRect.h, 'rgba(26,28,44,0.9)', PAL.w);
     drawText(ctx, 'OK', W / 2, okRect.y + 6, PAL.y, { scale: 2, align: 'center' });
-    drawText(ctx, 'TYPE LETTERS, OR USE THE ARROW KEYS', W / 2, 290, PAL.n, { align: 'center' });
-    drawText(ctx, 'ENTER TO CONFIRM', W / 2, 302, PAL.n, { align: 'center' });
+    drawText(ctx, say(env, 'TYPE LETTERS, OR USE THE ARROW KEYS', 'TAP THE ARROWS TO CHANGE A LETTER'), W / 2, 290, PAL.n, { align: 'center' });
+    drawText(ctx, say(env, 'ENTER TO CONFIRM', 'THEN TAP OK'), W / 2, 302, PAL.n, { align: 'center' });
   };
   return s;
 }
@@ -483,7 +487,7 @@ function highScoresScreen(env) {
       if (e.hard) drawText(ctx, 'HARD', 476, y + 3, PAL.o);
     }
     if (!s.list.length) drawText(ctx, 'NO SCORES YET. GO AND FEED THE OLD MAN!', W / 2, 330, PAL.n, { align: 'center' });
-    else if (blink(s.t, 2)) drawText(ctx, 'PRESS ENTER OR CLICK TO RETURN', W / 2, 340, PAL.n, { align: 'center' });
+    else if (blink(s.t, 2)) drawText(ctx, say(env, 'PRESS ENTER OR CLICK TO RETURN', 'TAP TO RETURN'), W / 2, 340, PAL.n, { align: 'center' });
   };
   return s;
 }

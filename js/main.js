@@ -5,6 +5,8 @@ import { makeRng } from './rng.js';
 import { loadSprites, PAL } from './sprites.js';
 import { World } from './world.js';
 import { createInput } from './input.js';
+import { createTouch } from './touch.js';
+import { createGamepad } from './gamepad.js';
 import { makeGround, makeSnow, updateSnow, drawWorld, drawHud, drawCrosshair, drawPanel } from './render.js';
 import { drawText } from './font.js';
 import { scores } from './highscores.js';
@@ -46,6 +48,19 @@ function toggleFullscreen() {
     else document.documentElement.requestFullscreen?.()?.catch?.(() => {});
   } catch { /* not allowed here */ }
 }
+// First tap on a touch device: go fullscreen and lock to landscape where the browser allows it.
+function enterFullscreen() {
+  try {
+    if (document.fullscreenElement) return;
+    document.documentElement.requestFullscreen?.()
+      ?.then?.(() => globalThis.screen?.orientation?.lock?.('landscape')?.catch?.(() => {}))
+      ?.catch?.(() => {});
+  } catch { /* not allowed here */ }
+}
+
+// A phone held upright: the page shows a "rotate your device" notice, and play pauses.
+const portraitTouch = () => innerHeight > innerWidth && !!globalThis.matchMedia?.('(pointer: coarse)').matches;
+
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials') toggleFullscreen();
 });
@@ -80,6 +95,10 @@ const game = {
   events: [], // drained each frame; sound will hook in here
 };
 window.__wenceslas = game; // handy for debugging and automated tests
+game.input = input;
+
+const touch = createTouch(input, canvas, { isPlaying: () => game.state === 'play', onFirstTap: enterFullscreen });
+const pad = createGamepad(input);
 
 // ---------- flow ----------
 
@@ -163,10 +182,12 @@ function update(dt) {
   input.tick(clock);
   updateSnow(snow, dt, clock);
   game.stateT += dt;
+  touch.update(clock);
+  pad.update(dt, game.state);
   const w = game.world;
 
   if (game.state === 'play') {
-    if (input.takePause()) { setState('paused'); return; }
+    if (input.takePause() || portraitTouch()) { setState('paused'); return; }
     input.takeConfirm(); input.takeKeys(); input.takeClick(); // not used while playing
     game.banner -= dt;
     w.update(dt, input.gameplay(w.king.cd));
@@ -205,7 +226,14 @@ function draw() {
     ]);
   }
   if (s) s.draw(ctx);
-  if (input.st.mouseSeen) drawCrosshair(ctx, input.st.mouse.x, input.st.mouse.y);
+  touch.draw(ctx, w);
+  if (input.st.lastDevice === 'mouse') {
+    if (input.st.mouseSeen) drawCrosshair(ctx, input.st.mouse.x, input.st.mouse.y);
+  } else if (game.state === 'play') {
+    // Touch and gamepad have no pointer, so mark where the sword is aimed.
+    const k = w.king;
+    drawCrosshair(ctx, k.x + Math.cos(k.aim) * 34, k.y - 8 + Math.sin(k.aim) * 34);
+  }
   if (params.has('debug')) drawText(ctx, 'SEED ' + seed, 4, H - 8, PAL.n);
 }
 

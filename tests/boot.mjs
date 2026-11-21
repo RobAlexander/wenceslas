@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const handlers = {};            // window-level listeners
 const canvasHandlers = {};      // canvas listeners
-let now = 0, raf = null, fullscreenCalls = 0;
+let now = 0, raf = null, fullscreenCalls = 0, padNow = null;
 const on = (store) => (type, fn) => (store[type] ||= []).push(fn);
 const canvas = Object.assign(createCanvas(640, 360), {
   style: {}, addEventListener: on(canvasHandlers),
@@ -23,6 +23,7 @@ Object.assign(globalThis, {
     createElement: (t) => (t === 'canvas' ? createCanvas(1, 1) : {}),
   },
 });
+Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => [padNow] }, configurable: true });
 Object.defineProperty(globalThis, 'performance', { value: { now: () => now }, configurable: true });
 
 await import('../js/main.js');
@@ -32,8 +33,8 @@ const frames = (n) => { for (let i = 0; i < n; i++) { now += 1000 / 60; const cb
 const secs = (s) => frames(Math.round(s * 60));
 const fire = (store, type, e = {}) => (store[type] || []).forEach((fn) => fn({ preventDefault() {}, ...e }));
 const key = (code) => { fire(handlers, 'keydown', { code, repeat: false }); frames(2); fire(handlers, 'keyup', { code }); frames(1); };
-const click = (x = 320, y = 180) => { fire(canvasHandlers, 'mousedown', { button: 0, clientX: x, clientY: y }); frames(2); };
-const mouse = (x, y) => { fire(handlers, 'mousemove', { clientX: x, clientY: y }); frames(1); };
+const click = (x = 320, y = 180) => { fire(canvasHandlers, 'pointerdown', { pointerType: 'mouse', button: 0, clientX: x, clientY: y }); frames(2); };
+const mouse = (x, y) => { fire(handlers, 'pointermove', { pointerType: 'mouse', clientX: x, clientY: y }); frames(1); };
 
 secs(0.5);
 assert.equal(game.state, 'title');
@@ -73,7 +74,7 @@ assert.equal(game.state, 'play');
 assert.equal(game.night, 1);
 
 // play: hold D to walk right, mouse aim, swing
-const x0 = game.world.king.x;
+let x0 = game.world.king.x;
 fire(handlers, 'keydown', { code: 'KeyD', repeat: false });
 mouse(500, 100);
 click(500, 100);
@@ -96,6 +97,97 @@ assert.equal(game.state, 'play');
 fire(handlers, 'blur'); assert.equal(game.state, 'paused');
 key('Enter'); assert.equal(game.state, 'play'); // RESUME is first
 
+// ================= touch =================
+// 640x360 window: one CSS pixel is one game pixel, so client coordinates are game coordinates.
+resizeTo(640, 360);
+assert.equal(game.input.st.lastDevice, 'mouse');
+let ts = 1000;
+const touchEv = (type, id, x, y, extra = {}) => fire(handlers, type, { pointerType: 'touch', pointerId: id, clientX: x, clientY: y, timeStamp: ts, ...extra });
+const tdown = (id, x, y) => { touchEv('pointerdown', id, x, y); frames(1); };
+const tmove = (id, x, y) => { touchEv('pointermove', id, x, y); frames(1); };
+const tup = (id, x, y, after = 100) => { ts += after; touchEv('pointerup', id, x, y); frames(2); };
+secs(0.6);
+let king = game.world.king;
+
+// left half: floating joystick moves the king, and stops when released
+x0 = king.x;
+tdown(1, 150, 200); tmove(1, 200, 200); secs(0.5);
+assert.equal(game.input.st.lastDevice, 'touch');
+assert.ok(king.x > x0 + 15, 'joystick moved the king right');
+tup(1, 200, 200, 600);
+assert.equal(fullscreenCalls, 2, 'first touch asks for fullscreen once');
+secs(0.3); x0 = king.x; secs(0.3);
+assert.ok(Math.abs(king.x - x0) < 0.01, 'king stops when the thumb lifts');
+
+// right half: drag up and release swings upward
+tdown(2, 500, 200); tmove(2, 500, 120);
+tup(2, 500, 120, 300);
+assert.ok(Math.abs(king.swingAngle + Math.PI / 2) < 0.05, 'swung in the dragged direction');
+assert.ok(king.cd > 0);
+assert.equal(fullscreenCalls, 2, 'fullscreen is only requested the first time');
+
+// right half: a quick tap swings at the nearest robber
+secs(0.8);
+game.world.robbers.push({ id: 9999, x: king.x - 28, y: king.y, r: 4, hp: 1, maxHp: 1, target: null, retarget: 0, windup: 0,
+  atkCd: 9, stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1, side: 1 });
+tdown(3, 500, 250); tup(3, 500, 250, 100);
+assert.ok(Math.abs(king.swingAngle) > 3, 'turned toward the robber on the left');
+assert.equal(game.world.kills, 1, 'the tap killed it');
+// a slow press without a drag does nothing
+secs(0.8); assert.ok(king.cd <= 0, 'ready to swing');
+tdown(4, 500, 250); tup(4, 500, 250, 600);
+assert.ok(king.cd <= 0, 'a long press without a drag is not a tap');
+
+// the pause button, then tapping RESUME
+tdown(5, 620, 10); tup(5, 620, 10);
+assert.equal(game.state, 'paused');
+tdown(6, 320, 152); tup(6, 320, 152);
+assert.equal(game.state, 'play');
+// leave through the menu, and start a game by tapping START
+key('Escape'); key('ArrowDown'); key('Enter');
+assert.equal(game.state, 'title');
+tdown(7, 320, 156); tup(7, 320, 156);
+assert.equal(game.state, 'play');
+const fsAfterTouch = fullscreenCalls;
+
+// a phone held upright pauses play
+globalThis.matchMedia = () => ({ matches: true });
+resizeTo(360, 640);
+assert.equal(game.state, 'paused');
+delete globalThis.matchMedia;
+resizeTo(640, 360);
+key('Escape'); assert.equal(game.state, 'play');
+
+// a mouse move hands control back to the mouse
+mouse(300, 100);
+assert.equal(game.input.st.lastDevice, 'mouse');
+resizeTo(1280, 720);
+
+// ================= gamepad =================
+const padBtn = (...down) => Array.from({ length: 17 }, (_, i) => ({ pressed: down.includes(i), value: down.includes(i) ? 1 : 0 }));
+const setPad = (axes = [0, 0, 0, 0], ...down) => { padNow = { connected: true, axes, buttons: padBtn(...down) }; frames(2); };
+king = game.world.king;
+secs(0.5);
+x0 = king.x;
+setPad([0.9, 0, 0, 0]); secs(0.5);
+assert.equal(game.input.st.lastDevice, 'pad');
+assert.ok(king.x > x0 + 15, 'left stick moves the king');
+setPad([0, 0, 0, -1]);                                  // right stick up: aim up
+assert.ok(Math.abs(king.aim + Math.PI / 2) < 0.01, 'right stick aims');
+setPad([0, 0, 0, -1], 7); assert.ok(king.cd > 0, 'right trigger swings');
+setPad(); secs(0.6);
+setPad([0, 0, 0, 0], 9); assert.equal(game.state, 'paused', 'Start pauses');
+setPad(); setPad([0, 0, 0, 0], 9); assert.equal(game.state, 'play', 'Start resumes');
+setPad();
+// menus: d-pad down then A on the pause menu quits to the title; A on the title starts
+setPad([0, 0, 0, 0], 9); setPad();
+setPad([0, 0, 0, 0], 13); setPad(); setPad([0, 0, 0, 0], 0); setPad();
+assert.equal(game.state, 'title');
+setPad([0, 0, 0, 0], 0); setPad();
+assert.equal(game.state, 'play', 'A starts the game from the title');
+padNow = null; frames(2);
+mouse(300, 100);
+
 // Win every night: nightEnd -> skip count -> continue -> next night
 for (let n = 1; n <= 12; n++) {
   assert.equal(game.night, n);
@@ -115,7 +207,7 @@ secs(1.7);
 key('Enter');
 assert.equal(game.state, 'initials');
 key('KeyF');                                   // a letter here, not fullscreen
-assert.equal(fullscreenCalls, 1);
+assert.equal(fullscreenCalls, fsAfterTouch);
 key('KeyW'); key('KeyE'); key('KeyN');
 key('Enter');
 assert.equal(game.state, 'highscores');
