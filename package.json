@@ -2,8 +2,10 @@
   "name": "workspace",
   "version": "1.0.0",
   "scripts": {
-    "serve": "python3 -m http.server 8000",
-    "smoke": "node tests/smoke.mjs"
+    "serve": "python3 -m http.server ${PORT:-8000}",
+    "smoke": "node tests/smoke.mjs",
+    "screens": "node tests/screens.mjs screens-out",
+    "test": "node tests/highscores.mjs && node tests/boot.mjs && node tests/screens.mjs screens-out && node tests/smoke.mjs"
   },
   "keywords": [],
   "author": "",

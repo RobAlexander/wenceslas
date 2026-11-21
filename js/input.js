@@ -8,6 +8,9 @@ const MOVE_KEYS = {
   ArrowUp: [0, -1], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowRight: [1, 0],
 };
 
+// Keys that keep firing while held down, when read through takeKeys().
+const REPEATABLE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
+
 export function createInput(canvas) {
   const keys = new Set();
   const st = {
@@ -16,12 +19,15 @@ export function createInput(canvas) {
     swingAt: -Infinity,   // time of the last swing press, for buffering
     pause: false,
     confirm: false,
+    keyQueue: [],   // key codes pressed since the last takeKeys(), for menus
+    click: null,    // last left-click position, for menus
   };
   let now = 0;
 
   addEventListener('keydown', (e) => {
-    if (MOVE_KEYS[e.code] || e.code === 'Space') e.preventDefault();
+    if (MOVE_KEYS[e.code] || e.code === 'Space' || e.code === 'Backspace') e.preventDefault();
     keys.add(e.code);
+    if ((!e.repeat || REPEATABLE.has(e.code)) && st.keyQueue.length < 32) st.keyQueue.push(e.code);
     if (e.repeat) return;
     if (e.code === 'Escape' || e.code === 'KeyP') st.pause = true;
     if (e.code === 'Enter' || e.code === 'Space') st.confirm = true;
@@ -39,6 +45,7 @@ export function createInput(canvas) {
     if (e.button !== 0) return;
     toGame(e);
     st.mouseSeen = true;
+    st.click = { x: st.mouse.x, y: st.mouse.y };
     st.swingAt = now;
     st.confirm = true;
   });
@@ -61,6 +68,12 @@ export function createInput(canvas) {
     },
     takePause() { const p = st.pause; st.pause = false; return p; },
     takeConfirm() { const c = st.confirm; st.confirm = false; return c; },
-    clearPresses() { st.pause = false; st.confirm = false; st.swingAt = -Infinity; },
+    // Menu input: key codes pressed since the last call, and the last click (or null).
+    takeKeys() { const k = st.keyQueue; st.keyQueue = []; return k; },
+    takeClick() { const c = st.click; st.click = null; return c; },
+    clearPresses() {
+      st.pause = false; st.confirm = false; st.swingAt = -Infinity;
+      st.keyQueue = []; st.click = null;
+    },
   };
 }

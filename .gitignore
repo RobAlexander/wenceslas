@@ -2,3 +2,4 @@ node_modules/
 .venv/
 test-results/
 playwright-report/
+screens-out/

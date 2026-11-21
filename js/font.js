@@ -42,7 +42,9 @@ export function drawText(ctx, str, x, y, color = '#f4f4f4', opts = {}) {
   if (align === 'center') sx = Math.round(x - w / 2);
   else if (align === 'right') sx = Math.round(x - w);
   const sy = Math.round(y);
-  if (opts.shadow !== false) plot(ctx, str, sx + scale, sy + scale, opts.shadowColor || '#1a1c2c', scale);
+  // Shadow offset is capped at 2px so large text doesn't get a heavy, garbled shadow.
+  const sh = Math.min(scale, 2);
+  if (opts.shadow !== false) plot(ctx, str, sx + sh, sy + sh, opts.shadowColor || '#1a1c2c', scale);
   plot(ctx, str, sx, sy, color, scale);
 }
 

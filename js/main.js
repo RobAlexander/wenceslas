@@ -1,4 +1,4 @@
-// Entry point: canvas setup, main loop and the flow between nights.
+// Entry point: canvas setup, main loop and the flow between screens and nights.
 
 import { W, H, CFG, NIGHTS, parTime } from './config.js';
 import { makeRng } from './rng.js';
@@ -7,36 +7,68 @@ import { World } from './world.js';
 import { createInput } from './input.js';
 import { makeGround, makeSnow, updateSnow, drawWorld, drawHud, drawCrosshair, drawPanel } from './render.js';
 import { drawText } from './font.js';
+import { scores } from './highscores.js';
+import { createScreens } from './screens.js';
 
+// The game draws into a hidden 640x360 buffer (ctx). Each frame the buffer is
+// copied to the visible canvas, enlarged by a whole number so pixels stay square.
+// The browser then shrinks that slightly to fill the window ("sharp bilinear"
+// scaling), which looks crisp at any window size and is exact at whole-number fits.
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-canvas.width = W;
-canvas.height = H;
+const screenCtx = canvas.getContext('2d');
+const buffer = document.createElement('canvas');
+buffer.width = W;
+buffer.height = H;
+const ctx = buffer.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-// Largest whole-number scale that fits, in device pixels, so pixels stay even.
+let upscale = 0;
 function resize() {
   const dpr = window.devicePixelRatio || 1;
-  const fit = Math.min((innerWidth * dpr) / W, (innerHeight * dpr) / H);
-  const scale = fit >= 1 ? Math.floor(fit) / dpr : fit / dpr;
-  canvas.style.width = W * scale + 'px';
-  canvas.style.height = H * scale + 'px';
+  const fit = Math.min(innerWidth / W, innerHeight / H); // CSS pixels per game pixel
+  const k = Math.min(8, Math.max(1, Math.ceil(fit * dpr))); // whole-number upscale, in device pixels
+  if (k !== upscale) {
+    upscale = k;
+    canvas.width = W * k;   // resizing a canvas also resets its context state
+    canvas.height = H * k;
+    screenCtx.imageSmoothingEnabled = false;
+  }
+  canvas.style.width = W * fit + 'px';
+  canvas.style.height = H * fit + 'px';
 }
-addEventListener('resize', resize);
+addEventListener('resize', resize); // also fires on browser zoom and when moving between monitors
 resize();
 
-// Test hooks: ?seed=123&night=5. They do nothing unless given.
+// F toggles fullscreen (not while typing initials). Ignored if the browser refuses.
+function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+  } catch { /* not allowed here */ }
+}
+addEventListener('keydown', (e) => {
+  if (e.code === 'KeyF' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials') toggleFullscreen();
+});
+
+// Test hooks, all optional and ignored in normal play:
+//   ?seed=123      repeatable layouts
+//   ?night=5       start straight into that night
+//   ?screen=NAME   show one screen: title, paused, nightEnd, gameover, ending, initials, highscores
+//   ?debug         show the seed
 const params = new URLSearchParams(location.search);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : (Math.random() * 2 ** 32) >>> 0;
 const rng = makeRng(seed);
+const fxRng = makeRng(seed ^ 0x9e3779b9); // cosmetic randomness, kept apart so layouts stay repeatable
 const firstNight = Math.min(NIGHTS, Math.max(1, Number(params.get('night')) || 1));
 
 const spr = loadSprites();
 const input = createInput(canvas);
 const snow = makeSnow(rng);
+const backdrop = makeGround(fxRng);
 
 const game = {
-  state: 'play', // play | paused | nightEnd | gameover | ending
+  state: 'title', // title | play | paused | nightEnd | gameover | ending | initials | highscores
+  screen: null,
   night: firstNight,
   hard: false,
   score: 0,
@@ -45,26 +77,58 @@ const game = {
   ground: null,
   stateT: 0,
   banner: 0,
-  summary: null,
   events: [], // drained each frame; sound will hook in here
 };
 window.__wenceslas = game; // handy for debugging and automated tests
 
-function startNight(n) {
+// ---------- flow ----------
+
+function setState(name, data) {
+  game.state = name;
+  game.screen = screens[name] || null;
+  game.stateT = 0;
+  input.clearPresses();
+  if (game.screen) game.screen.enter(data);
+}
+
+function prepareNight(n) {
   game.night = n;
   game.world = new World({ night: n, hard: game.hard, rng, events: game.events, kingHp: game.kingHp });
   game.ground = makeGround(rng);
-  game.state = 'play';
-  game.banner = 2.5;
-  input.clearPresses();
 }
 
-function newGame(hard) {
-  game.hard = hard;
-  game.score = 0;
-  game.kingHp = CFG.kingMaxHp;
-  startNight(1);
+function startNight(n) {
+  prepareNight(n);
+  game.banner = 2.5;
+  setState('play');
 }
+
+const actions = {
+  newGame(hard) {
+    game.hard = hard;
+    game.score = 0;
+    game.kingHp = CFG.kingMaxHp;
+    startNight(1);
+  },
+  resume() { setState('play'); },
+  quitToTitle() { setState('title'); },
+  nextNight() {
+    if (game.night >= NIGHTS) { setState('ending', { score: game.score, night: game.night, hard: game.hard }); return; }
+    // Pages are left behind between nights; Wenceslas recovers some health.
+    const k = game.world.king;
+    game.kingHp = Math.min(CFG.kingMaxHp, k.hp + Math.ceil(CFG.kingMaxHp * CFG.hpRestoreBetweenNights));
+    startNight(game.night + 1);
+  },
+  // After a run ends (game over or the ending): initials if it made the table.
+  finishRun(run) {
+    if (scores.qualifies(run.score)) setState('initials', run);
+    else setState('highscores', { highlight: 0 });
+  },
+};
+
+const screens = createScreens({
+  input, events: game.events, spr, scores, snow, backdrop, go: setState, actions,
+});
 
 function nightSummary(w) {
   const mul = w.hard ? CFG.hardPointsMul : 1;
@@ -72,6 +136,7 @@ function nightSummary(w) {
   const under = Math.max(0, Math.floor(par - w.time));
   return {
     food: w.delivered * CFG.pointsFood * mul,
+    foodCount: w.delivered,
     kills: w.kills * CFG.pointsKill * mul,
     killCount: w.kills,
     time: w.time,
@@ -87,7 +152,10 @@ function liveScore() {
   return game.score + (w.delivered * CFG.pointsFood + w.kills * CFG.pointsKill) * mul;
 }
 
+// ---------- loop ----------
+
 const STEP = 1 / 60;
+const IDLE = { mx: 0, my: 0, swing: false };
 let acc = 0, last = performance.now() / 1000, clock = 0;
 
 function update(dt) {
@@ -98,87 +166,46 @@ function update(dt) {
   const w = game.world;
 
   if (game.state === 'play') {
-    if (input.takePause()) { game.state = 'paused'; return; }
-    input.takeConfirm();
+    if (input.takePause()) { setState('paused'); return; }
+    input.takeConfirm(); input.takeKeys(); input.takeClick(); // not used while playing
     game.banner -= dt;
     w.update(dt, input.gameplay(w.king.cd));
     if (w.done) {
-      game.summary = nightSummary(w);
-      game.score += game.summary.food + game.summary.kills + game.summary.bonus;
-      game.state = 'nightEnd';
-      game.stateT = 0;
+      const summary = nightSummary(w);
+      game.score += summary.food + summary.kills + summary.bonus;
+      setState('nightEnd', { summary, night: game.night, score: game.score });
     } else if (w.dead) {
-      game.state = 'gameover';
-      game.stateT = 0;
+      setState('gameover', { score: game.score + liveEarned(w), night: game.night, hard: game.hard });
     }
-  } else if (game.state === 'paused') {
-    if (input.takePause() || input.takeConfirm()) { game.state = 'play'; input.clearPresses(); }
-  } else {
-    w.update(dt, { mx: 0, my: 0, swing: false }); // let particles settle
-    input.takePause();
-    const ready = game.stateT > 1;
-    if (input.takeConfirm() && ready) {
-      if (game.state === 'nightEnd') {
-        if (game.night >= NIGHTS) { game.state = 'ending'; game.stateT = 0; }
-        else {
-          const k = w.king;
-          game.kingHp = Math.min(CFG.kingMaxHp, k.hp + Math.ceil(CFG.kingMaxHp * CFG.hpRestoreBetweenNights));
-          startNight(game.night + 1);
-        }
-      } else if (game.state === 'gameover') newGame(false);
-      else if (game.state === 'ending') newGame(true);
-    }
+    return;
   }
+  // Let particles and floating text settle behind the overlays.
+  if (game.state === 'nightEnd' || game.state === 'gameover') w.update(dt, IDLE);
+  game.screen.update(dt);
 }
 
-function fmtTime(s) {
-  const m = Math.floor(s / 60), r = Math.floor(s % 60);
-  return m + ':' + String(r).padStart(2, '0');
+// Points earned so far this night (a night that ends in defeat still counts).
+function liveEarned(w) {
+  const mul = w.hard ? CFG.hardPointsMul : 1;
+  return (w.delivered * CFG.pointsFood + w.kills * CFG.pointsKill) * mul;
 }
 
 function draw() {
   const w = game.world;
-  drawWorld(ctx, w, spr, game.ground, snow, clock);
-  drawHud(ctx, w, spr, liveScore());
-
+  const s = game.screen;
+  if (!s || s.overlay) {
+    drawWorld(ctx, w, spr, game.ground, snow, clock);
+    drawHud(ctx, w, spr, liveScore());
+  }
   if (game.state === 'play' && game.banner > 0) {
     drawPanel(ctx, [
       ['NIGHT ' + game.night, PAL.y, 2],
       null,
       'DELIVER ' + w.p.foodTarget + ' FOOD TO THE OLD MAN',
     ]);
-  } else if (game.state === 'paused') {
-    drawPanel(ctx, [['PAUSED', PAL.y, 2], null, 'PRESS ESC OR CLICK TO RESUME']);
-  } else if (game.state === 'nightEnd') {
-    const s = game.summary;
-    drawPanel(ctx, [
-      ['NIGHT ' + game.night + ' COMPLETE', PAL.y, 2],
-      null,
-      'FOOD DELIVERED  ' + s.food,
-      'ROBBERS (' + s.killCount + ')  ' + s.kills,
-      'TIME ' + fmtTime(s.time) + ' PAR ' + fmtTime(s.par) + '  ' + s.bonus,
-      null,
-      ['SCORE  ' + game.score, PAL.l],
-      null,
-      game.stateT > 1 ? ['CLICK OR ENTER TO CONTINUE', PAL.n] : '',
-    ], { width: 300 });
-  } else if (game.state === 'gameover') {
-    drawPanel(ctx, [
-      ['GAME OVER', PAL.r, 2], null, 'SCORE ' + game.score, null,
-      game.stateT > 1 ? ['CLICK OR ENTER TO TRY AGAIN', PAL.n] : '',
-    ]);
-  } else if (game.state === 'ending') {
-    const p = spr.partridge;
-    drawPanel(ctx, [
-      ['A PARTRIDGE!', PAL.y, 2], null, null, null,
-      'YOU HAVE SEEN THE OLD MAN THROUGH TWELVE NIGHTS',
-      'SCORE ' + game.score, null,
-      game.stateT > 1 ? ['CLICK OR ENTER FOR HARD MODE', PAL.n] : '',
-    ], { width: 320 });
-    ctx.drawImage(p.img, Math.round(W / 2 - p.w), Math.round(H / 2 - 24), p.w * 2, p.h * 2);
   }
-
-  if (input.st.mouseSeen && game.state === 'play') drawCrosshair(ctx, input.st.mouse.x, input.st.mouse.y);
+  if (s) s.draw(ctx);
+  if (input.st.mouseSeen) drawCrosshair(ctx, input.st.mouse.x, input.st.mouse.y);
   if (params.has('debug')) drawText(ctx, 'SEED ' + seed, 4, H - 8, PAL.n);
 }
 
@@ -195,14 +222,34 @@ function frame() {
   if (steps === 5) acc = 0;
   game.events.length = 0;
   draw();
+  screenCtx.drawImage(buffer, 0, 0, canvas.width, canvas.height);
   requestAnimationFrame(frame);
 }
 
 // Pause automatically if the window loses focus.
-addEventListener('blur', () => { if (game.state === 'play') game.state = 'paused'; });
+addEventListener('blur', () => { if (game.state === 'play') setState('paused'); });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && game.state === 'play') game.state = 'paused';
+  if (document.hidden && game.state === 'play') setState('paused');
 });
 
-startNight(firstNight);
+// ---------- start ----------
+
+prepareNight(firstNight);
+const demo = {
+  title: () => setState('title'),
+  paused: () => setState('paused'),
+  highscores: () => setState('highscores', { highlight: 0 }),
+  initials: () => setState('initials', { score: 4200, night: 7, hard: false }),
+  ending: () => setState('ending', { score: 15800, night: 12, hard: false }),
+  gameover: () => setState('gameover', { score: 3200, night: 5, hard: false }),
+  nightEnd: () => setState('nightEnd', {
+    summary: { food: 400, foodCount: 4, kills: 100, killCount: 4, time: 52, par: 70, bonus: 180 },
+    night: 3, score: 2400,
+  }),
+};
+const wanted = params.get('screen');
+if (params.has('night')) startNight(firstNight);
+else if (wanted && demo[wanted]) demo[wanted]();
+else setState('title');
+
 requestAnimationFrame(frame);

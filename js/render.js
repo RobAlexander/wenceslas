@@ -50,7 +50,7 @@ export function updateSnow(flakes, dt, t) {
   }
 }
 
-function drawSnow(ctx, flakes, nearLayer) {
+export function drawSnow(ctx, flakes, nearLayer) {
   for (const f of flakes) {
     if (f.near !== nearLayer) continue;
     ctx.fillStyle = f.near ? '#f4f4f4' : '#d5e0ee';
