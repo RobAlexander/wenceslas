@@ -846,10 +846,10 @@ export class World {
 
   // ---------- archers ----------
   //
-  // An archer looks only at Wenceslas. While cooling down it walks into range, backs away if
-  // he is close (slower than he walks, so he can run it down), or stands. When the cooldown
-  // is up and he is in range it plants its feet and draws its bow (the telegraph), then
-  // looses one inaccurate arrow at where he is at that moment.
+  // Archers look only at Wenceslas. While cooling down they walk into range, back away if
+  // he is close (slower than he walks, so he can run them down), or stand. When the cooldown
+  // is up and he is in range they plant their feet and draw their bow (the telegraph), then
+  // loose one inaccurate arrow at where he is at that moment.
 
   /** @param {number} dt */
   updateArchers(dt) {

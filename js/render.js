@@ -144,7 +144,7 @@ function drawSwingArc(ctx, k) {
   const px = k.x, py = k.y - 8;
   const start = k.swingAngle - CFG.swingHalfArc;
   const end = start + 2 * CFG.swingHalfArc * t;
-  const outer = CFG.swingRange;
+  const outer = CFG.swingDrawnRadius;   // how far the arc is drawn; the blow itself reaches CFG.swingRange
   for (let r = outer - 5; r <= outer; r += 1) {
     const step = 0.8 / r;
     for (let a = start; a <= end; a += step) {
@@ -206,8 +206,8 @@ function drawRobber(ctx, spr, rob) {
   }
 }
 
-// The archer, with its bow: carried at its side, or drawn toward Wenceslas with an arrow nocked
-// and a red "!" (the telegraph) while it takes aim.
+// The archer, with their bow: carried at their side, or drawn toward Wenceslas with an arrow nocked
+// and a red "!" (the telegraph) while they take aim.
 /** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Archer} ar */
 function drawArcher(ctx, spr, ar) {
   const drawing = ar.state === 'draw';

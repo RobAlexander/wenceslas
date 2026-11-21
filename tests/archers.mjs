@@ -5,7 +5,8 @@
 import assert from 'node:assert/strict';
 import { World } from '../js/world.js';
 import { makeRng } from '../js/rng.js';
-import { nightParams, ARCHERS_FROM, CFG } from '../js/config.js';
+import { nightParams, ARCHERS_FROM, CFG, NIGHTS } from '../js/config.js';
+import { CURVES } from '../js/tuning.js';
 
 const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
 
@@ -44,14 +45,17 @@ const step = (w, secs, inp = STILL, each) => {
 // An arrow already in flight, heading east at normal speed.
 const arrowAt = (w, x, y) => w.arrows.push({ id: 9000 + w.arrows.length, x, y, vx: CFG.arrowSpeed, vy: 0, angle: 0, life: CFG.arrowLife });
 
-// ---- counts per night: none before ARCHERS_FROM, at least one from then, never more than three
-for (let n = 1; n <= 12; n++) {
-  const m = nightParams(n).maxArchers;
-  assert.equal(m > 0, n >= ARCHERS_FROM, 'night ' + n);
-  assert.ok(m <= 3);
+// ---- counts per night: none before ARCHERS_FROM, at least one from then, never more than the most allowed
+{
+  let last = 0;
+  for (let n = 1; n <= NIGHTS; n++) {
+    const m = nightParams(n).maxArchers;
+    assert.equal(m > 0, n >= ARCHERS_FROM, 'night ' + n);
+    assert.ok(m <= CURVES.archers.most, 'night ' + n);
+    assert.ok(m >= last, 'never fewer than the night before');
+    last = m;
+  }
 }
-assert.equal(ARCHERS_FROM, 3);
-assert.deepEqual([3, 6, 9, 12].map((n) => nightParams(n).maxArchers), [1, 2, 3, 3]);
 
 // ---- slow enough to be run down, even in hard mode
 assert.ok(CFG.archerSpeed * CFG.hardSpeedMul < CFG.kingSpeed * 0.65, 'approach speed');
@@ -60,7 +64,7 @@ assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed * 0.65, 'ret
 // ---- approach, draw (telegraph), loose
 {
   const { w, events } = quietWorld();
-  const ar = addArcher(w, 320, 10);                 // off the top: farther than its range
+  const ar = addArcher(w, 320, 10);                 // off the top: farther than their range
   const seen = [];
   let shot = null;
   step(w, 8, STILL, () => {
@@ -71,13 +75,13 @@ assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed * 0.65, 'ret
       shot = { spread: Math.abs(a.angle - toKing), range: Math.hypot(w.king.x - ar.x, w.king.y - ar.y) };
     }
   });
-  assert.ok(shot, 'it shot at Wenceslas; states: ' + seen.join(' '));
-  assert.ok(seen.includes('draw'), 'it drew its bow first');
-  assert.ok(shot.range <= CFG.archerRange + 1, 'it came into range before shooting: ' + shot.range.toFixed(0));
+  assert.ok(shot, 'they shot at Wenceslas; states: ' + seen.join(' '));
+  assert.ok(seen.includes('draw'), 'they drew their bow first');
+  assert.ok(shot.range <= CFG.archerRange + 1, 'they came into range before shooting: ' + shot.range.toFixed(0));
   assert.ok(shot.spread <= CFG.archerSpread + 1e-9, 'within the spread: ' + shot.spread.toFixed(3));
 }
 
-// ---- it is rooted while it draws, and the draw takes the time it says
+// ---- an archer is rooted while drawing, and the draw takes the time it says
 {
   const { w } = quietWorld();
   const ar = addArcher(w, 320, 60);                 // in range already
@@ -148,7 +152,7 @@ assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed * 0.65, 'ret
   assert.ok(events.includes('arrowHit'));
 }
 
-// ---- it looks only at Wenceslas: a page right next to it is ignored
+// ---- archers look only at Wenceslas: a page right next to them is ignored
 {
   const { w } = quietWorld(5);
   w.king.x = 500; w.king.y = 100; w.trail = [{ x: 500, y: 100 }];
@@ -157,12 +161,12 @@ assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed * 0.65, 'ret
   const angles = [];
   const before = new Set();
   step(w, 8, STILL, () => { for (const a of w.arrows) if (!before.has(a.id)) { before.add(a.id); angles.push(a.angle); } });
-  assert.ok(angles.length > 0, 'it shot');
+  assert.ok(angles.length > 0, 'they shot');
   for (const a of angles) assert.ok(Math.abs(a) <= CFG.archerSpread + 1e-9, 'aimed east at the king, not south at the page: ' + a.toFixed(2));
-  assert.ok(ar.x > 100, 'it walked toward Wenceslas');
+  assert.ok(ar.x > 100, 'they walked toward Wenceslas');
 }
 
-// ---- close in, it backs away (and does not walk into him)
+// ---- close in, archers back away (and do not walk into him)
 {
   const { w } = quietWorld();
   const ar = addArcher(w, 320, 200 - 50);           // inside the keep-away distance
@@ -172,7 +176,7 @@ assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed * 0.65, 'ret
   assert.ok(Math.hypot(ar.x - w.king.x, ar.y - w.king.y) > d0 + 20, 'backed away');
 }
 
-// ---- and a king who chases it catches it and kills it with the sword, in normal and hard mode
+// ---- and a king who chases them catches them and kills them with the sword, in normal and hard mode
 for (const hard of [false, true]) {
   const { w } = quietWorld(7, hard);
   w.king.god = true;                                // the arrows aren't what's being tested here
@@ -192,7 +196,7 @@ for (const hard of [false, true]) {
 {
   const { w, events } = quietWorld();
   const ar = addArcher(w, 320, 60);
-  ar.hp = 2;                                        // so it survives the hit
+  ar.hp = 2;                                        // so they survive the hit
   step(w, 0.05);
   assert.equal(ar.state, 'draw');
   w.hitFoe(ar, 0, -1);

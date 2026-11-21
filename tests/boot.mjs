@@ -4,6 +4,7 @@
 // plus game over. Fails on any thrown error. Run with: node tests/boot.mjs
 import { createCanvas } from 'canvas';
 import assert from 'node:assert/strict';
+import { NIGHTS } from '../js/config.js';
 
 const handlers = {};            // window-level listeners
 const canvasHandlers = {};      // canvas listeners
@@ -233,7 +234,7 @@ padNow = null; frames(2);
 mouse(300, 100);
 
 // Win every night: nightEnd -> skip count -> continue -> next night
-for (let n = 1; n <= 12; n++) {
+for (let n = 1; n <= NIGHTS; n++) {
   assert.equal(game.night, n);
   game.world.done = true;
   frames(2);
@@ -242,7 +243,7 @@ for (let n = 1; n <= 12; n++) {
   secs(0.7);
   key('Enter');      // skip the count-up
   key('Enter');      // continue
-  if (n < 12) assert.equal(game.state, 'play');
+  if (n < NIGHTS) assert.equal(game.state, 'play');
 }
 assert.equal(game.state, 'ending');
 const score = game.score;

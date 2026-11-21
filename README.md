@@ -42,6 +42,14 @@ The game aims with whichever device you used last, so you can switch between mou
 **How to play** on the title menu explains the goal, shows each sprite with what it does, and lists the controls for
 the device you're using.
 
+## Tuning
+
+Every number that changes how the game plays is in one file, [js/tuning.js](js/tuning.js): how many nights there are, how much
+food each needs, how enemies build up from night to night, and the speed, health, damage and timing of everything. It's plain
+numbers with a comment on each. Edit one, save, and reload the page. Then run `npm test`: it checks the numbers are sane and
+names the one that isn't. A few checks are about design intent (for example, archers must stay slower than Wenceslas so he
+can run them down), so change those on purpose.
+
 ## Dev console
 
 Press the <kbd>`</kbd> key (the one with ~ on it, below Esc) to open a console at the top of the screen. The game waits
@@ -88,6 +96,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
+- `tests/sword.mjs`: the sword's real reach against the arc that's drawn. `tests/tuning.mjs`: sanity checks on every number in `js/tuning.js`.
 - `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, name entry, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
 - `tests/gamepad.mjs`: unit tests for the gamepad module with a fake pad (deadzones, press-only swings, menu repeat).
 - `tests/screens.mjs`: renders every menu screen to PNG in `screens-out/` (`npm run screens`) and checks their key handling.
@@ -107,14 +116,15 @@ Sound starts at the first key press or click, because browsers don't allow it so
 ## Design decisions (beyond the brief)
 
 - Food is delivered when Wenceslas reaches the old man; carrying pages hand over one item at a time.
-- The difficulty table (`nightParams` in `js/config.js`) is read two levels ahead (`NIGHT_OFFSET`), because the first two levels were too easy: night 1 plays like level 3, and night 12 like level 14. Food target is 2 + level (5 on night 1, 16 on night 12). Robber count and spawn rate rise each night; from night 4 some robbers take two hits.
+- Enemy and supply numbers build up along curves in `js/tuning.js`, read two levels ahead (`NIGHT_OFFSET`) because the first two levels were too easy: night 1 plays like level 3, and night 12 like level 14. The food the old man needs is set separately and rises evenly from 5 on night 1 to 8 on night 12 (`FOOD_NEEDED`). Robber count and spawn rate rise each night; from night 4 some robbers take two hits.
+- The sword really reaches 60 pixels, but its arc is drawn at 30 (`swingRange` and `swingDrawnRadius`), so it hits further than it looks. Set them equal for an honest arc.
 - Pages are dropped between nights: each night starts with Wenceslas alone.
 - Wenceslas has 10 HP and recovers half his maximum between nights. Pages have 2 HP.
 - The sword doesn't hurt pages.
 - Hard mode resets the score and doubles all points.
 - Picking up food: Wenceslas or any page in the line can touch it, and it goes to the first empty-handed page.
 - High scores: top 10, easy and hard runs share one table (hard runs are marked), stored in localStorage. Names are up to 8 characters and the last one is remembered for next time (older 3-letter entries still load). A run that ends in defeat counts the points earned in the unfinished night, and the GAME OVER screen says NEW HIGH SCORE! when that score makes the table, before moving on to name entry. A score of 0 never makes the table.
-- Touch: the joystick floats, and a tap's auto-aim reaches 90 pixels (`autoAimRange` in `js/config.js`); beyond that the king swings the way he's facing.
+- Touch: the joystick floats, and a tap's auto-aim reaches 90 pixels (`autoAimRange` in `js/tuning.js`); beyond that the king swings the way he's facing.
 - Hard mode is unlocked, and stays unlocked, once night 12 has been cleared.
 - Quitting from the pause menu doesn't record a score.
 - Robbers raise their club (with a red "!") for 0.35 s before a blow lands, so attacks can be read and interrupted.
@@ -124,15 +134,15 @@ Sound starts at the first key press or click, because browsers don't allow it so
   With no food being carried, wolves circle loosely round Wenceslas and do no harm. One sword hit kills a wolf, for the
   same points as a robber, and the end-of-night breakdown counts robbers and wolves together as "enemies".
   A stolen item makes the food-dropped sound; there's no wolf sound of its own yet. Wolf numbers and speeds are in
-  `js/config.js`.
-- Archers appear from night 3: one at a time on nights 3 to 5, two on 6 to 8, three from 9, on top of the robbers. An archer
-  looks only at Wenceslas. It walks to within 150 pixels, then plants its feet and draws its bow for 0.8 s (a red "!" shows
-  it's about to shoot) and looses one arrow at where he is at that moment, with up to about 33 pixels of random error at that
+  `js/tuning.js`.
+- Archers appear from night 3: one at a time on nights 3 to 5, two on 6 to 8, three from 9, on top of the robbers. Archers
+  look only at Wenceslas. They walk to within 150 pixels, then plant their feet and draw their bow for 0.8 s (a red "!" shows
+  they're about to shoot) and loose one arrow at where he is at that moment, with up to about 33 pixels of random error at that
   range, so a standing king is hit roughly one time in five and a moving one rarely. An arrow hits the first of Wenceslas
   or a page that it reaches, for 1 damage. Trees stop arrows; rocks and walls don't (they're low). Closer than 70 pixels,
-  an archer backs away between shots, but at 34 pixels a second to Wenceslas's 85, so he can run one down; one hit kills
-  it. Arrows reuse the sword-swing and hit sounds (there's no archer sound of its own yet). Its numbers are in
-  `js/config.js` (`archer*` and `arrow*`).
+  archers back away between shots, but at 34 pixels a second to Wenceslas's 85, so he can run them down; one hit kills.
+  Arrows reuse the sword-swing and hit sounds (archers have no sound of their own yet). The numbers are in
+  `js/tuning.js` (`archer*` and `arrow*`).
 
 ## Licence
 

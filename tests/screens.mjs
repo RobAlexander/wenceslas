@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 globalThis.document = { createElement: () => createCanvas(1, 1) };
 const { World } = await import('../js/world.js');
+const { NIGHTS } = await import('../js/config.js');
 const { loadSprites } = await import('../js/sprites.js');
 const { makeRng } = await import('../js/rng.js');
 const { makeGround, makeSnow, drawWorld, drawHud } = await import('../js/render.js');
@@ -94,7 +95,7 @@ press('Enter'); assert.equal(log.length, 0); // too early: ignored? (t>0.5 so th
 assert.ok(current.done());
 snap('night-end-done');
 press('Enter'); assert.deepEqual(log.splice(0), ['nextNight']);
-current.enter({ summary, night: 12, score: 18000 }); run(3.2); snap('night-end-final');
+current.enter({ summary, night: NIGHTS, score: 18000 }); run(3.2); snap('night-end-final');
 
 // game over
 current = screens.gameover; current.enter({ score: 4200, night: 7, hard: false });

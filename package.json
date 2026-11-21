@@ -6,7 +6,7 @@
     "smoke": "node tests/smoke.mjs",
     "screens": "node tests/screens.mjs screens-out",
     "typecheck": "tsc -p .",
-    "test": "tsc -p . && node tests/highscores.mjs && node tests/wolves.mjs && node tests/archers.mjs && node tests/gamepad.mjs && node tests/music.mjs && node tests/audio.mjs && node tests/sfx.mjs && node tests/boot.mjs && node tests/screens.mjs screens-out && node tests/smoke.mjs",
+    "test": "tsc -p . && node tests/highscores.mjs && node tests/wolves.mjs && node tests/archers.mjs && node tests/sword.mjs && node tests/tuning.mjs && node tests/gamepad.mjs && node tests/music.mjs && node tests/audio.mjs && node tests/sfx.mjs && node tests/boot.mjs && node tests/screens.mjs screens-out && node tests/smoke.mjs",
     "sounds": "python3 tools/build_sounds.py",
     "music": "node tools/render_music.mjs music-out"
   },

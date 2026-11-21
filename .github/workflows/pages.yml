@@ -40,6 +40,8 @@ jobs:
           node tests/highscores.mjs
           node tests/wolves.mjs
           node tests/archers.mjs
+          node tests/sword.mjs
+          node tests/tuning.mjs
           node tests/gamepad.mjs
           node tests/music.mjs
           node tests/audio.mjs
