@@ -24,7 +24,6 @@ export const LEGACY = [
   'js/screens.js',
   'js/sprites.js',
   'js/touch.js',
-  'js/world.js',
 ];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');

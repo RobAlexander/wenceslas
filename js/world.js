@@ -3,18 +3,148 @@
 import { W, H, HUD_H, CFG, nightParams } from './config.js';
 import { FOOD_KINDS } from './sprites.js';
 
+/** @typedef {import('./rng.js').Rng} Rng */
+/** @typedef {{ x: number, y: number }} Point */
+
+/**
+ * What the player is doing this step, from input.js.
+ * @typedef {object} GameInput
+ * @property {number} mx          move vector (length up to 1)
+ * @property {number} my
+ * @property {boolean} swing
+ * @property {boolean} [autoAim]  a touch tap: turn toward the nearest enemy first
+ * @property {number} [ax]        aim point (mouse)...
+ * @property {number} [ay]
+ * @property {number} [aimAngle]  ...or aim direction (touch, gamepad)
+ */
+
+/**
+ * @typedef {object} King
+ * @property {number} id
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} aim        radians
+ * @property {number} swingT     time left in the current swing
+ * @property {number} swingAngle
+ * @property {number} cd         swing cooldown left
+ * @property {number} inv        invulnerability left
+ * @property {number} walkT
+ * @property {boolean} moving
+ * @property {number} kbx        knockback velocity
+ * @property {number} kby
+ * @property {number} face       1 right, -1 left
+ * @property {Set<number>} hit   ids already struck by the current swing
+ * @property {boolean} [god]     dev console: takes no damage
+ */
+
+/**
+ * @typedef {object} Page
+ * @property {number} id
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {'wander' | 'follow'} state
+ * @property {Point} target      where a wandering page is heading
+ * @property {number} wanderT
+ * @property {string | null} food
+ * @property {number} vx
+ * @property {number} vy
+ * @property {number} inv
+ * @property {number} flash
+ * @property {number} walkT
+ * @property {number} face
+ * @property {number} side       which way to go round obstacles
+ * @property {boolean} entered   has come onto the screen
+ */
+
+/**
+ * @typedef {object} Robber
+ * @property {number} id
+ * @property {'robber'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {King | Page | null} target
+ * @property {number} retarget
+ * @property {number} windup     telegraph time left before a blow
+ * @property {number} atkCd
+ * @property {number} stun
+ * @property {number} flash
+ * @property {number} kbx
+ * @property {number} kby
+ * @property {number} walkT
+ * @property {number} face
+ * @property {number} side
+ */
+
+/** @typedef {'circle' | 'hunt' | 'crouch' | 'leap' | 'recover' | 'flee'} WolfState */
+
+/**
+ * @typedef {object} Wolf
+ * @property {number} id
+ * @property {'wolf'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {WolfState} state
+ * @property {number} t          time left in a timed state (crouch, leap, recover)
+ * @property {Page | null} target
+ * @property {number} retarget
+ * @property {number} vx         leap velocity
+ * @property {number} vy
+ * @property {number} z          height in the air while leaping
+ * @property {string | null} food
+ * @property {Point | null} exit where it's running to with stolen food
+ * @property {number} stun
+ * @property {number} flash
+ * @property {number} kbx
+ * @property {number} kby
+ * @property {number} walkT
+ * @property {number} face
+ * @property {number} side
+ * @property {boolean} entered
+ * @property {number} orbit      angle round Wenceslas while circling
+ * @property {number} dir        1 or -1: which way it circles
+ * @property {number} phase      offsets the wobble of its circle
+ */
+
+/** @typedef {Robber | Wolf} Foe */
+
+/**
+ * @typedef {{ kind: 'tree', x: number, y: number, r: number, size: number, variant: number }
+ *   | { kind: 'rock', x: number, y: number, r: number, size: number }
+ *   | { kind: 'wall', x: number, y: number, w: number, h: number, size: number }} Obstacle
+ */
+
+/** @typedef {{ id: number, x: number, y: number, kind: string, delay: number, pop: number, t: number }} Food */
+/** @typedef {{ x: number, y: number, r: number, bob: number }} OldMan */
+/** @typedef {{ x: number, y: number, vx: number, vy: number, life: number, color: string }} Particle */
+/** @typedef {{ x: number, y: number, text: string, color: string, life: number }} FloatText */
+
 const TAU = Math.PI * 2;
+/** @param {number} v @param {number} a @param {number} b */
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+/** @param {Point} a @param {Point} b */
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+/** @param {number} a @param {number} b */
 function angDiff(a, b) {
   let d = (a - b) % TAU;
   if (d > Math.PI) d -= TAU;
   if (d < -Math.PI) d += TAU;
   return d;
 }
+/** @param {Point} e */
 const onScreen = (e, m = 0) => e.x > -m && e.x < W + m && e.y > HUD_H - m && e.y < H + m;
 
 // Distance from point to obstacle surface, plus the outward normal.
+/** @param {Obstacle} o @param {number} x @param {number} y */
 function obsQuery(o, x, y) {
   if (o.kind === 'wall') {
     const hx = o.w / 2, hy = o.h / 2;
@@ -37,7 +167,14 @@ function obsQuery(o, x, y) {
 let nextId = 1;
 
 export class World {
-  // events: array that receives event names (for sound and tests)
+  /**
+   * @param {object} opts
+   * @param {number} opts.night
+   * @param {boolean} opts.hard
+   * @param {Rng} opts.rng
+   * @param {string[]} opts.events  receives event names (for sound and tests)
+   * @param {number} [opts.kingHp]  health carried over from the last night
+   */
   constructor({ night, hard, rng, events, kingHp }) {
     this.night = night;
     this.hard = hard;
@@ -52,23 +189,34 @@ export class World {
     this.done = false;
     this.dead = false;
 
+    /** @type {Obstacle[]} */
     this.obstacles = [];
-    this.pages = [];   // every page, wandering or following
-    this.line = [];    // following pages, front first
+    /** @type {Page[]} every page, wandering or following */
+    this.pages = [];
+    /** @type {Page[]} following pages, front first */
+    this.line = [];
+    /** @type {Robber[]} */
     this.robbers = [];
+    /** @type {Wolf[]} */
     this.wolves = [];
+    /** @type {Food[]} */
     this.foods = [];
+    /** @type {Particle[]} */
     this.particles = [];
+    /** @type {FloatText[]} */
     this.texts = [];
 
+    /** @type {King} */
     this.king = {
       id: nextId++, x: W / 2, y: H / 2 + 30, r: 4, hp: kingHp ?? CFG.kingMaxHp,
       aim: 0, swingT: 0, swingAngle: 0, cd: 0, inv: 0, walkT: 0, moving: false,
       kbx: 0, kby: 0, face: 1, hit: new Set(),
     };
+    /** @type {Point[]} the king's recent path, newest first; pages follow it */
     this.trail = [{ x: this.king.x, y: this.king.y }];
 
-    this.placeLevel();
+    this.oldMan = this.placeOldMan();
+    this.placeObstacles();
 
     this.pageTimer = 1.5;
     this.foodTimer = 1;
@@ -80,20 +228,26 @@ export class World {
     this.spawnPage(true);
   }
 
+  /** @param {string} name */
   emit(name) { this.events.push(name); }
 
   // ---------- level layout ----------
 
-  placeLevel() {
+  // The old man: somewhere well away from the starting spot.
+  /** @returns {OldMan} */
+  placeOldMan() {
     const { rng, king } = this;
-    // The old man: somewhere well away from the starting spot.
+    let x = 0, y = 0;
     for (let i = 0; i < 200; i++) {
-      const x = rng.range(40, W - 40), y = rng.range(HUD_H + 30, H - 24);
-      if (Math.hypot(x - king.x, y - king.y) > 170 || i === 199) {
-        this.oldMan = { x, y, r: 5, bob: 0 };
-        break;
-      }
+      x = rng.range(40, W - 40); y = rng.range(HUD_H + 30, H - 24);
+      if (Math.hypot(x - king.x, y - king.y) > 170) break;
     }
+    return { x, y, r: 5, bob: 0 };
+  }
+
+  placeObstacles() {
+    const { rng } = this;
+    /** @type {Obstacle['kind'][]} */
     const want = [];
     const nT = rng.int(3, 5), nR = rng.int(2, 3), nW = rng.int(1, 2);
     for (let i = 0; i < nT; i++) want.push('tree');
@@ -101,20 +255,23 @@ export class World {
     for (let i = 0; i < nW; i++) want.push('wall');
     for (const kind of want) {
       for (let tries = 0; tries < 60; tries++) {
-        const o = { kind, x: rng.range(30, W - 30), y: rng.range(HUD_H + 34, H - 18) };
-        if (kind === 'tree') { o.r = 5; o.size = 12; o.variant = rng.int(0, 1); }
-        else if (kind === 'rock') { o.r = 7; o.size = 9; }
+        const x = rng.range(30, W - 30), y = rng.range(HUD_H + 34, H - 18);
+        /** @type {Obstacle} */
+        let o;
+        if (kind === 'tree') o = { kind, x, y, r: 5, size: 12, variant: rng.int(0, 1) };
+        else if (kind === 'rock') o = { kind, x, y, r: 7, size: 9 };
         else {
           const horiz = rng() < 0.6;
-          o.w = horiz ? rng.int(4, 7) * 8 : 8;
-          o.h = horiz ? 6 : rng.int(4, 6) * 8;
-          o.size = Math.max(o.w, o.h) / 2;
+          const w = horiz ? rng.int(4, 7) * 8 : 8;
+          const h = horiz ? 6 : rng.int(4, 6) * 8;
+          o = { kind, x, y, w, h, size: Math.max(w, h) / 2 };
         }
         if (this.layoutFree(o)) { this.obstacles.push(o); break; }
       }
     }
   }
 
+  /** @param {Obstacle} o */
   layoutFree(o) {
     if (Math.hypot(o.x - this.king.x, o.y - this.king.y) < o.size + 40) return false;
     if (Math.hypot(o.x - this.oldMan.x, o.y - this.oldMan.y) < o.size + 34) return false;
@@ -132,12 +289,20 @@ export class World {
     return { x: W / 2, y: H / 2 };
   }
 
+  /** @returns {Point} */
   edgeSpawn() {
     const side = this.rng.int(0, 3), m = 12;
     if (side === 0) return { x: -m, y: this.rng.range(HUD_H + 20, H - 20) };
     if (side === 1) return { x: W + m, y: this.rng.range(HUD_H + 20, H - 20) };
     if (side === 2) return { x: this.rng.range(20, W - 20), y: HUD_H - m };
     return { x: this.rng.range(20, W - 20), y: H + m };
+  }
+
+  // A spot just off the edge, preferably well away from the king.
+  edgeSpawnAway() {
+    let pos = this.edgeSpawn();
+    for (let i = 1; i < 10 && dist(pos, this.king) <= 140; i++) pos = this.edgeSpawn();
+    return pos;
   }
 
   // ---------- spawning ----------
@@ -156,6 +321,7 @@ export class World {
     });
   }
 
+  /** @param {Point} [at] @param {string} [kind] */
   spawnFood(at, kind, delay = 0) {
     const pos = at || this.freeSpot(24, 8);
     this.foods.push({
@@ -165,11 +331,7 @@ export class World {
   }
 
   spawnRobber() {
-    let pos;
-    for (let i = 0; i < 10; i++) {
-      pos = this.edgeSpawn();
-      if (dist(pos, this.king) > 140) break;
-    }
+    const pos = this.edgeSpawnAway();
     const hp = this.rng() < this.p.toughRobberChance ? 2 : 1;
     this.robbers.push({
       id: nextId++, kind: 'robber', x: pos.x, y: pos.y, r: 4, hp, maxHp: hp, target: null, retarget: 0,
@@ -179,11 +341,8 @@ export class World {
   }
 
   spawnWolf() {
-    let pos;
-    for (let i = 0; i < 10; i++) {
-      pos = this.edgeSpawn();
-      if (dist(pos, this.king) > 140) break;
-    }
+    const pos = this.edgeSpawnAway();
+    /** @type {Wolf} */
     const wf = {
       id: nextId++, kind: 'wolf', x: pos.x, y: pos.y, r: 4, hp: 1, maxHp: 1,
       state: 'circle', t: 0, target: null, retarget: 0, vx: 0, vy: 0, z: 0, food: null, exit: null,
@@ -196,11 +355,12 @@ export class World {
   }
 
   // Every enemy the sword can hit.
+  /** @returns {Foe[]} */
   foes() { return [...this.robbers, ...this.wolves]; }
 
   // ---------- update ----------
 
-  // inp: { mx, my } move vector (length <= 1), { ax, ay } aim point, swing (bool)
+  /** @param {number} dt @param {GameInput} inp */
   update(dt, inp) {
     this.updateFx(dt);
     if (this.done || this.dead) return;
@@ -215,6 +375,7 @@ export class World {
     this.updateSpawning(dt);
   }
 
+  /** @param {number} dt @param {GameInput} inp */
   updateKing(dt, inp) {
     const k = this.king;
     const ml = Math.hypot(inp.mx, inp.my);
@@ -230,7 +391,7 @@ export class World {
     this.collide(k);
 
     if (inp.aimAngle != null) k.aim = inp.aimAngle;
-    else if (inp.ax != null) k.aim = Math.atan2(inp.ay - (k.y - 8), inp.ax - k.x);
+    else if (inp.ax != null && inp.ay != null) k.aim = Math.atan2(inp.ay - (k.y - 8), inp.ax - k.x);
     k.face = Math.cos(k.aim) < 0 ? -1 : 1;
 
     k.cd -= dt;
@@ -279,7 +440,8 @@ export class World {
     }
   }
 
-  // A sword hit on a robber or a wolf.
+  // A sword hit on a robber or a wolf. (nx, ny): direction of the blow.
+  /** @param {Foe} foe @param {number} nx @param {number} ny */
   hitFoe(foe, nx, ny) {
     const wolf = foe.kind === 'wolf';
     foe.hp -= 1;
@@ -287,20 +449,20 @@ export class World {
     foe.stun = 0.3;
     foe.kbx = nx * CFG.swingKnockback;
     foe.kby = ny * CFG.swingKnockback;
-    if (wolf) {
+    if (foe.kind === 'wolf') {
       // knocked out of a crouch or a leap
       foe.z = 0;
       if (foe.state !== 'flee') this.startCircling(foe);
     } else foe.windup = 0;
     this.emit('hit');
     if (foe.hp <= 0) {
-      const list = wolf ? this.wolves : this.robbers;
-      list.splice(list.indexOf(foe), 1);
+      if (foe.kind === 'wolf') this.wolves.splice(this.wolves.indexOf(foe), 1);
+      else this.robbers.splice(this.robbers.indexOf(foe), 1);
       this.kills++;
       this.emit('kill');
       this.puff(foe.x, foe.y - 6, wolf ? ['#566c86', '#f4f4f4', '#333c57'] : ['#5d275d', '#f4f4f4', '#333c57'], 14);
       this.floatText(foe.x, foe.y - 16, '+' + CFG.pointsKill * this.pointsMul(), '#f4f4f4');
-      if (foe.food) {
+      if (foe.kind === 'wolf' && foe.food) {
         // a wolf killed while running off drops what it stole
         this.spawnFood({ x: clamp(foe.x, 8, W - 8), y: clamp(foe.y, HUD_H + 10, H - 6) }, foe.food, CFG.dropPickupDelay);
         this.emit('foodDrop');
@@ -320,6 +482,7 @@ export class World {
   }
 
   // Point a given distance back along the king's path.
+  /** @param {number} d @returns {Point} */
   trailPoint(d) {
     let px = this.king.x, py = this.king.y, acc = 0;
     for (const t of this.trail) {
@@ -333,6 +496,7 @@ export class World {
     return { x: px, y: py };
   }
 
+  /** @param {number} dt */
   updatePages(dt) {
     const k = this.king;
     for (const pg of this.pages) {
@@ -383,6 +547,7 @@ export class World {
     for (const pg of this.pages) this.collide(pg);
   }
 
+  /** @param {number} dt */
   updateRobbers(dt) {
     const k = this.king;
     const decay = Math.exp(-10 * dt);
@@ -394,11 +559,11 @@ export class World {
       rob.x += rob.kbx * dt; rob.y += rob.kby * dt;
       rob.kbx *= decay; rob.kby *= decay;
 
-      if (rob.retarget <= 0 || !this.alive(rob.target)) {
-        rob.target = this.chooseTarget(rob);
+      let tg = rob.target;
+      if (rob.retarget <= 0 || !this.alive(tg)) {
+        tg = rob.target = this.chooseTarget(rob);
         rob.retarget = 0.25;
       }
-      const tg = rob.target;
       if (rob.stun > 0) continue;
       const d = dist(rob, tg);
       const reach = rob.r + tg.r + 4;
@@ -426,13 +591,16 @@ export class World {
     for (const rob of this.robbers) this.collide(rob);
   }
 
+  /** @param {King | Page | null} e @returns {e is King | Page} */
   alive(e) {
-    return e && (e === this.king || this.pages.includes(e));
+    return !!e && (e === this.king || this.pages.includes(/** @type {Page} */ (e)));
   }
 
+  /** @param {Robber} rob @returns {King | Page} */
   chooseTarget(rob) {
     const k = this.king;
     if (dist(rob, k) < CFG.robberAggroRadius) return k;
+    /** @type {Page | null} */
     let best = null, bd = Infinity;
     for (const pg of this.pages) {
       const d = dist(rob, pg);
@@ -441,6 +609,7 @@ export class World {
     return best || k;
   }
 
+  /** @param {King | Page} target @param {Point} from */
   damage(target, from, amount = CFG.robberDamage) {
     const nx = target.x - from.x, ny = target.y - from.y, l = Math.hypot(nx, ny) || 1;
     if (target === this.king) {
@@ -458,7 +627,7 @@ export class World {
       }
       return;
     }
-    const pg = target;
+    const pg = /** @type {Page} */ (target);
     if (pg.inv > 0) return;
     pg.hp -= amount;
     pg.inv = CFG.pageInvuln;
@@ -473,6 +642,7 @@ export class World {
   // States: circle (prowl round Wenceslas), hunt (run at a page carrying food),
   // crouch (telegraph), leap, recover (after a miss), flee (off the screen with the food).
 
+  /** @param {Wolf} wf */
   startCircling(wf) {
     const k = this.king;
     wf.state = 'circle';
@@ -480,7 +650,9 @@ export class World {
     wf.orbit = Math.atan2((wf.y - k.y) / 0.7, wf.x - k.x); // pick up the circle where the wolf already is
   }
 
+  /** @param {Wolf} wf @returns {Page | null} */
   nearestCarrier(wf) {
+    /** @type {Page | null} */
     let best = null, bd = Infinity;
     for (const pg of this.line) {
       if (!pg.food) continue;
@@ -490,10 +662,12 @@ export class World {
     return best;
   }
 
+  /** @param {number} dt */
   updateWolves(dt) {
     const k = this.king;
     const decay = Math.exp(-10 * dt);
-    const has = (pg) => pg && pg.food && this.line.includes(pg);
+    /** @param {Page | null} pg @returns {pg is Page} a page in the line, carrying food */
+    const has = (pg) => !!pg && !!pg.food && this.line.includes(pg);
     for (const wf of [...this.wolves]) {
       wf.flash -= dt;
       wf.stun -= dt;
@@ -537,6 +711,7 @@ export class World {
 
       let tx, ty, speed;
       if (wf.state === 'flee') {
+        wf.exit ??= this.nearestExit(wf);
         tx = wf.exit.x; ty = wf.exit.y; speed = CFG.wolfFleeSpeed;
         if (!onScreen(wf, 10)) {
           this.wolves.splice(this.wolves.indexOf(wf), 1);
@@ -545,8 +720,8 @@ export class World {
         }
       } else {
         if (wf.retarget <= 0) { wf.target = this.nearestCarrier(wf); wf.retarget = 0.25; }
-        if (has(wf.target)) {
-          const pg = wf.target;
+        const pg = wf.target;
+        if (has(pg)) {
           if (wf.entered && dist(wf, pg) < CFG.wolfLeapRange) {
             wf.state = 'crouch';
             wf.t = CFG.wolfCrouch;
@@ -586,6 +761,7 @@ export class World {
   }
 
   // The wolf takes the page's food, bites the page, and runs for the nearest edge.
+  /** @param {Wolf} wf @param {Page} pg */
   steal(wf, pg) {
     wf.food = pg.food;
     pg.food = null;               // taken first, so a page that dies of the bite drops nothing
@@ -596,16 +772,24 @@ export class World {
     wf.state = 'flee';
     wf.z = 0;
     wf.target = null;
-    const m = 24;
-    const exits = [
-      { d: wf.x, x: -m, y: wf.y },
-      { d: W - wf.x, x: W + m, y: wf.y },
-      { d: wf.y - HUD_H, x: wf.x, y: HUD_H - m },
-      { d: H - wf.y, x: wf.x, y: H + m },
-    ];
-    wf.exit = exits.reduce((a, b) => (b.d < a.d ? b : a));
+    wf.exit = this.nearestExit(wf);
   }
 
+  // A point just past the nearest edge of the screen.
+  /** @param {Point} e @returns {Point} */
+  nearestExit(e) {
+    const m = 24;
+    const exits = [
+      { d: e.x, x: -m, y: e.y },
+      { d: W - e.x, x: W + m, y: e.y },
+      { d: e.y - HUD_H, x: e.x, y: HUD_H - m },
+      { d: H - e.y, x: e.x, y: H + m },
+    ];
+    const best = exits.reduce((a, b) => (b.d < a.d ? b : a));
+    return { x: best.x, y: best.y };
+  }
+
+  /** @param {Page} pg */
   killPage(pg) {
     this.pages.splice(this.pages.indexOf(pg), 1);
     const li = this.line.indexOf(pg);
@@ -618,6 +802,7 @@ export class World {
     }
   }
 
+  /** @param {number} dt */
   updateFood(dt) {
     for (const f of [...this.foods]) {
       f.delay -= dt;
@@ -635,6 +820,7 @@ export class World {
     }
   }
 
+  /** @param {number} dt */
   updateDelivery(dt) {
     const om = this.oldMan;
     om.bob += dt;
@@ -655,6 +841,7 @@ export class World {
     }
   }
 
+  /** @param {number} dt */
   updateSpawning(dt) {
     const p = this.p;
     this.pageTimer -= dt;
@@ -686,6 +873,7 @@ export class World {
   // ---------- movement helpers ----------
 
   // Bend a desired direction around nearby obstacles.
+  /** @param {{ x: number, y: number, r: number, side?: number }} e @param {number} dx @param {number} dy */
   steer(e, dx, dy) {
     let ax = dx, ay = dy;
     for (const o of this.obstacles) {
@@ -704,6 +892,7 @@ export class World {
     return { x: ax / l, y: ay / l };
   }
 
+  /** @param {{ x: number, y: number, r: number }} e */
   collide(e) {
     for (const o of this.obstacles) {
       const q = obsQuery(o, e.x, e.y);
@@ -715,6 +904,7 @@ export class World {
     }
   }
 
+  /** @param {Point[]} list @param {number} minD */
   separate(list, minD) {
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
@@ -731,6 +921,7 @@ export class World {
 
   // ---------- effects ----------
 
+  /** @param {number} x @param {number} y @param {string[]} colors @param {number} n */
   puff(x, y, colors, n) {
     for (let i = 0; i < n; i++) {
       const a = this.rng.range(0, TAU), s = this.rng.range(15, 60);
@@ -741,10 +932,12 @@ export class World {
     }
   }
 
+  /** @param {number} x @param {number} y @param {string} text @param {string} color */
   floatText(x, y, text, color) {
     this.texts.push({ x, y, text, color, life: 1 });
   }
 
+  /** @param {number} dt */
   updateFx(dt) {
     for (const p of this.particles) {
       p.life -= dt;
