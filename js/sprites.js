@@ -70,6 +70,20 @@ const OLD_MAN = [
   '..k...k.m',
 ];
 
+// Side-on wolf, facing right, with two running frames.
+const WOLF_BODY = [
+  '..........N.N',
+  'N........NDND',
+  '.N.......DyDD',
+  '..NDDDDDDDDDk',
+  '..DDNNNNNDD..',
+  '..DnnnnnnD...',
+];
+const WOLF_LEGS = [
+  ['..D.D...D.D..', '..k.k...k.k..'],
+  ['.D...D.D...D.', 'k.....k.....k'],
+];
+
 export const FOOD_KINDS = ['bread', 'meat', 'wine'];
 const FOOD = {
   bread: ['.bbbbb.', 'byoyoyb', 'bbbbbbb', '.bbbbb.'],
@@ -118,8 +132,8 @@ function flip(src) {
 
 // A character sprite has two walk frames, each in normal, flipped and
 // white (hit flash) versions.
-function character(body) {
-  const frames = LEGS.map((legs) => {
+function character(body, legFrames = LEGS) {
+  const frames = legFrames.map((legs) => {
     const rows = [...body, ...legs];
     const normal = build(rows);
     const white = build(rows, '#ffffff');
@@ -186,6 +200,7 @@ export function loadSprites() {
     king: character(KING),
     page: character(PAGE),
     robber: character(ROBBER),
+    wolf: character(WOLF_BODY, WOLF_LEGS),
     oldMan: single(OLD_MAN),
     partridge: single(PARTRIDGE),
     food: Object.fromEntries(FOOD_KINDS.map((k) => [k, single(FOOD[k])])),

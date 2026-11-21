@@ -1,5 +1,5 @@
-// Menu and overlay screens: title, pause, end of night, game over, ending,
-// initials entry and the high score table.
+// Menu and overlay screens: title, how to play, pause, end of night, game over,
+// ending, initials entry and the high score table.
 //
 // Each screen is an object with:
 //   overlay          true if the frozen/running game is drawn underneath it
@@ -10,7 +10,7 @@
 // env (provided by main.js): { input, events, spr, scores, snow, backdrop, go, actions }
 // Sound hooks: screens push 'menuMove' and 'menuSelect' into env.events.
 
-import { W, H } from './config.js';
+import { W, H, CFG, NIGHTS, WOLVES_FROM } from './config.js';
 import { PAL } from './sprites.js';
 import { drawText, textWidth } from './font.js';
 import { drawSnow } from './render.js';
@@ -76,6 +76,18 @@ const touchy = (env) => env.input.st.lastDevice === 'touch';
 const say = (env, keyboard, touch) => (touchy(env) ? touch : keyboard);
 
 function blink(t, rate = 2) { return Math.floor(t * rate) % 2 === 0; }
+
+// Split text into lines of at most n characters, at spaces.
+function wrap(str, n) {
+  const lines = [];
+  let cur = '';
+  for (const word of str.split(' ')) {
+    if (cur && cur.length + 1 + word.length > n) { lines.push(cur); cur = word; }
+    else cur = cur ? cur + ' ' + word : word;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
 
 // ---------- vertical menu ----------
 
@@ -155,6 +167,7 @@ function titleScreen(env) {
     s.t = 0;
     const items = [['START', () => env.actions.newGame(false)]];
     if (env.scores.hardUnlocked()) items.push(['HARD MODE', () => env.actions.newGame(true)]);
+    items.push(['HOW TO PLAY', () => env.go('howto')]);
     items.push(['HIGH SCORES', () => env.go('highscores', { highlight: 0 })]);
     actions = items.map((i) => i[1]);
     menu = new Menu(env, items.map((i) => i[0]), { y: 150 });
@@ -201,6 +214,78 @@ function titleScreen(env) {
   return s;
 }
 
+// ---------- how to play ----------
+
+const RULES = [
+  'DELIVER FOOD TO THE OLD MAN. EACH NIGHT NEEDS A SET AMOUNT, AND THERE ARE ' + NIGHTS + ' NIGHTS.',
+  '1. WALK INTO PAGES TO RECRUIT THEM. THEY FOLLOW YOU IN A LINE.',
+  '2. WALK OVER FOOD. A PAGE WITH EMPTY HANDS PICKS IT UP.',
+  '3. LEAD YOUR LINE TO THE OLD MAN TO HAND THE FOOD OVER.',
+  '4. GUARD YOUR PAGES WITH YOUR SWORD. FINISH QUICKLY FOR A TIME BONUS.',
+];
+
+// The sprite key: [sprite, name, colour, description]. Drawn in two columns.
+const legend = (spr) => [
+  [[spr.king.frames[0].normal], 'WENCESLAS', PAL.y,
+    "THAT'S YOU. " + CFG.kingMaxHp + ' HEALTH: IF IT RUNS OUT, THE GAME IS OVER.'],
+  [[spr.page.frames[0].normal], 'PAGE', PAL.l,
+    'WALK INTO ONE TO RECRUIT IT. CARRIES ONE FOOD, AND DIES AFTER ' + CFG.pageMaxHp + ' HITS.'],
+  [[spr.food.bread.img, spr.food.meat.img, spr.food.wine.img], 'FOOD', PAL.y,
+    'BREAD, MEAT AND WINE. A PAGE THAT DIES DROPS ITS FOOD, SO YOU CAN PICK IT UP AGAIN.'],
+  [[spr.oldMan.img], 'THE OLD MAN', PAL.w,
+    'FOLLOW THE YELLOW ARROW, AND STEP INSIDE HIS RING TO HAND OVER THE FOOD.'],
+  [[spr.robber.frames[0].normal], 'ROBBER', PAL.o,
+    'GOES FOR YOUR PAGES, OR FOR YOU IF YOU GET CLOSE. A RED ! MEANS A BLOW IS COMING.'],
+  [[spr.wolf.frames[0].normal], 'WOLF', PAL.n,
+    'FROM NIGHT ' + WOLVES_FROM + '. LEAPS AT A PAGE WITH FOOD, BITES IT AND RUNS OFF WITH THE FOOD. KILL IT TO GET THE FOOD BACK.'],
+  [[spr.trees[0].img, spr.rock.img], 'TREES, ROCKS, WALLS', PAL.n,
+    'THEY BLOCK THE WAY, FOR YOU AND YOUR ENEMIES ALIKE.'],
+];
+
+function howToScreen(env) {
+  const s = { overlay: false, t: 0 };
+  s.enter = () => { s.t = 0; };
+  s.update = (dt) => {
+    s.t += dt;
+    const keys = env.input.takeKeys();
+    const click = env.input.takeClick();
+    const back = keys.some((k) => k === 'Enter' || k === 'Space' || k === 'Escape') || click;
+    if (back && s.t > 0.3) { env.events.push('menuSelect'); env.go('title'); }
+  };
+  s.draw = (ctx) => {
+    backdrop(ctx, env);
+    bigText(ctx, 'HOW TO PLAY', 12, PAL.y, 4, PAL.r);
+    RULES.forEach((r, i) => drawText(ctx, r, 52, 46 + i * 10, i ? PAL.w : PAL.y));
+
+    const items = legend(env.spr);
+    items.forEach(([imgs, name, color, text], i) => {
+      const col = i < 4 ? 0 : 1, row = i < 4 ? i : i - 4;
+      const x = 34 + col * 300, y = 112 + row * 46;
+      // Sprites at 2x (scenery at 1x, as it's already large), centred in a slot, feet on a common line.
+      const big = imgs[0].height < 20;
+      const sc = big ? 2 : 1;
+      const gap = 3;
+      const total = imgs.reduce((a, im) => a + im.width * sc, 0) + gap * (imgs.length - 1);
+      let ix = x + 22 - total / 2;
+      for (const im of imgs) {
+        ctx.drawImage(im, Math.round(ix), Math.round(y + 30 - im.height * sc), im.width * sc, im.height * sc);
+        ix += im.width * sc + gap;
+      }
+      drawText(ctx, name, x + 52, y, color, { scale: 2 });
+      wrap(text, 54).forEach((ln, j) => drawText(ctx, ln, x + 52, y + 14 + j * 9, PAL.w));
+    });
+
+    const controls = {
+      mouse: 'WASD TO MOVE, MOUSE TO AIM, CLICK TO SWING. ESC PAUSES, M MUTES, F GOES FULLSCREEN.',
+      touch: 'LEFT THUMB MOVES. RIGHT THUMB AIMS, LIFT IT TO SWING. TAP TO SWING AT THE NEAREST ENEMY.',
+      pad: 'LEFT STICK MOVES, RIGHT STICK AIMS, RT, RB OR A SWINGS. START PAUSES.',
+    }[env.input.st.lastDevice] || '';
+    caption(ctx, controls, 312, PAL.y);
+    if (blink(s.t, 2)) caption(ctx, say(env, 'PRESS ENTER OR CLICK TO RETURN', 'TAP TO RETURN'), 336, PAL.n);
+  };
+  return s;
+}
+
 // ---------- pause ----------
 
 function pauseScreen(env) {
@@ -240,7 +325,7 @@ function nightEndScreen(env) {
     const total = m.food + m.kills + m.bonus;
     return [
       { label: 'FOOD (' + m.foodCount + ')', value: m.food },
-      { label: 'ROBBERS (' + m.killCount + ')', value: m.kills },
+      { label: 'ENEMIES (' + m.killCount + ')', value: m.kills },
       { label: 'TIME ' + fmtTime(m.time) + ' / PAR ' + fmtTime(m.par), value: m.bonus },
       { label: 'NIGHT TOTAL', value: total, color: PAL.y, rule: true },
       { label: 'SCORE', value: score, color: PAL.l },
@@ -496,6 +581,7 @@ function highScoresScreen(env) {
 export function createScreens(env) {
   return {
     title: titleScreen(env),
+    howto: howToScreen(env),
     paused: pauseScreen(env),
     nightEnd: nightEndScreen(env),
     gameover: gameOverScreen(env),

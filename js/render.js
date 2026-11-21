@@ -169,6 +169,23 @@ function drawRobber(ctx, spr, rob) {
   }
 }
 
+function drawWolf(ctx, spr, wf) {
+  const crouch = wf.state === 'crouch';
+  const lift = Math.round(wf.z || 0) - (crouch ? 1 : 0);   // in the air when leaping, low when crouching
+  const moving = !crouch && wf.state !== 'recover' && wf.stun <= 0;
+  blitChar(ctx, spr.wolf, { x: wf.x, y: wf.y - lift, walkT: wf.walkT, face: wf.face }, { moving, flash: wf.flash > 0 });
+  if (wf.food) {
+    // carried in the jaws
+    const f = spr.food[wf.food];
+    ctx.drawImage(f.img, Math.round(wf.x + wf.face * 6 - f.w / 2), Math.round(wf.y - lift - 6 - f.h / 2));
+  }
+  if (crouch) {
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(Math.round(wf.x) - 1, Math.round(wf.y - 16), 2, 3); // "!" telegraph, as for robbers
+    ctx.fillRect(Math.round(wf.x) - 1, Math.round(wf.y - 12), 2, 1);
+  }
+}
+
 function drawPage(ctx, spr, pg) {
   if (pg.inv > 0 && Math.floor(pg.inv * 20) % 2) return;
   blitChar(ctx, spr.page, pg, { moving: Math.hypot(pg.vx, pg.vy) > 4, flash: pg.flash > 0 });
@@ -236,6 +253,9 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   }
   for (const rob of world.robbers) {
     items.push({ y: rob.y, draw: () => { shadow(ctx, rob.x, rob.y - 1); drawRobber(ctx, spr, rob); } });
+  }
+  for (const wf of world.wolves) {
+    items.push({ y: wf.y, draw: () => { shadow(ctx, wf.x, wf.y - 1, 11); drawWolf(ctx, spr, wf); } });
   }
   const k = world.king;
   items.push({

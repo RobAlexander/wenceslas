@@ -1,6 +1,6 @@
 // Entry point: canvas setup, main loop and the flow between screens and nights.
 
-import { W, H, CFG, NIGHTS, parTime } from './config.js';
+import { W, H, CFG, NIGHTS, WOLVES_FROM, parTime } from './config.js';
 import { makeRng } from './rng.js';
 import { loadSprites, PAL } from './sprites.js';
 import { World } from './world.js';
@@ -12,6 +12,7 @@ import { makeGround, makeSnow, updateSnow, drawWorld, drawHud, drawCrosshair, dr
 import { drawText } from './font.js';
 import { scores } from './highscores.js';
 import { createScreens } from './screens.js';
+import { createConsole } from './devconsole.js';
 
 // The game draws into a hidden 640x360 buffer (ctx). Each frame the buffer is
 // copied to the visible canvas, enlarged by a whole number so pixels stay square.
@@ -63,7 +64,7 @@ function enterFullscreen() {
 const portraitTouch = () => innerHeight > innerWidth && !!globalThis.matchMedia?.('(pointer: coarse)').matches;
 
 addEventListener('keydown', (e) => {
-  const plain = !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials';
+  const plain = !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials' && !input.st.blocked;
   if (e.code === 'KeyF' && plain) toggleFullscreen();
   if (e.code === 'KeyM' && plain) audio.toggleMute();
 });
@@ -71,7 +72,7 @@ addEventListener('keydown', (e) => {
 // Test hooks, all optional and ignored in normal play:
 //   ?seed=123      repeatable layouts
 //   ?night=5       start straight into that night
-//   ?screen=NAME   show one screen: title, paused, nightEnd, gameover, ending, initials, highscores
+//   ?screen=NAME   show one screen: title, howto, paused, nightEnd, gameover, ending, initials, highscores
 //   ?debug         show the seed
 const params = new URLSearchParams(location.search);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : (Math.random() * 2 ** 32) >>> 0;
@@ -85,7 +86,7 @@ const snow = makeSnow(rng);
 const backdrop = makeGround(fxRng);
 
 const game = {
-  state: 'title', // title | play | paused | nightEnd | gameover | ending | initials | highscores
+  state: 'title', // title | howto | play | paused | nightEnd | gameover | ending | initials | highscores
   screen: null,
   night: firstNight,
   hard: false,
@@ -95,6 +96,8 @@ const game = {
   ground: null,
   stateT: 0,
   banner: 0,
+  god: false,     // dev console: Wenceslas takes no damage
+  cheated: false, // dev console used during this run: it can't go on the high score table
   events: [], // drained each frame; sound will hook in here
 };
 window.__wenceslas = game; // handy for debugging and automated tests
@@ -123,6 +126,7 @@ function setState(name, data) {
 function prepareNight(n) {
   game.night = n;
   game.world = new World({ night: n, hard: game.hard, rng, events: game.events, kingHp: game.kingHp });
+  game.world.king.god = game.god;
   game.ground = makeGround(rng);
 }
 
@@ -133,11 +137,12 @@ function startNight(n) {
 }
 
 const actions = {
-  newGame(hard) {
+  newGame(hard, night = 1) {
     game.hard = hard;
     game.score = 0;
     game.kingHp = CFG.kingMaxHp;
-    startNight(1);
+    game.cheated = game.god;
+    startNight(night);
   },
   resume() { setState('play'); },
   quitToTitle() { setState('title'); },
@@ -150,7 +155,7 @@ const actions = {
   },
   // After a run ends (game over or the ending): initials if it made the table.
   finishRun(run) {
-    if (scores.qualifies(run.score)) setState('initials', run);
+    if (scores.qualifies(run.score) && !game.cheated) setState('initials', run);
     else setState('highscores', { highlight: 0 });
   },
 };
@@ -158,6 +163,84 @@ const actions = {
 const screens = createScreens({
   input, events: game.events, spr, scores, snow, backdrop, go: setState, actions,
 });
+
+// ---------- dev console (the ` key) ----------
+
+const int = (s, lo, hi, what) => {
+  const n = Number(s);
+  if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(what + ' MUST BE ' + lo + ' TO ' + hi);
+  return n;
+};
+const inPlay = () => {
+  if (game.state !== 'play' && game.state !== 'paused') throw new Error('ONLY DURING A NIGHT');
+  game.cheated = true;
+  return game.world;
+};
+const SPAWN = {
+  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
+};
+const devConsole = createConsole({
+  input,
+  commands: {
+    night: {
+      args: 'N (HARD)', help: 'START A RUN ON NIGHT N (1-' + NIGHTS + ')', close: true,
+      run: ([n, mode]) => {
+        const night = int(n, 1, NIGHTS, 'NIGHT');
+        actions.newGame(mode === 'hard', night);
+        game.cheated = true;
+        return 'NIGHT ' + night + (game.hard ? ' (HARD)' : '');
+      },
+    },
+    win: {
+      help: 'DELIVER THE REST OF THE FOOD AND END THE NIGHT', close: true,
+      run: () => {
+        const w = inPlay();
+        w.delivered = w.p.foodTarget; w.done = true; w.emit('nightComplete');
+        if (game.state === 'paused') setState('play');
+      },
+    },
+    spawn: {
+      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, PAGE OR FOOD',
+      run: ([kind, count = '1']) => {
+        if (!SPAWN[kind]) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
+        const w = inPlay(), n = int(count, 1, 20, 'COUNT');
+        for (let i = 0; i < n; i++) SPAWN[kind](w);
+        return 'ADDED ' + n + ' ' + kind.toUpperCase();
+      },
+    },
+    kill: {
+      help: 'REMOVE EVERY ROBBER AND WOLF (NO POINTS)',
+      run: () => {
+        const w = inPlay(), n = w.robbers.length + w.wolves.length;
+        w.robbers.length = 0; w.wolves.length = 0;
+        return 'REMOVED ' + n;
+      },
+    },
+    hp: {
+      args: 'N', help: "SET WENCESLAS'S HEALTH",
+      run: ([n]) => { inPlay().king.hp = int(n, 1, CFG.kingMaxHp, 'HP'); return 'HP ' + n; },
+    },
+    god: {
+      help: 'TOGGLE: WENCESLAS TAKES NO DAMAGE',
+      run: () => {
+        game.god = !game.god;
+        if (game.god) game.cheated = true;
+        if (game.world) game.world.king.god = game.god;
+        return 'GOD MODE ' + (game.god ? 'ON' : 'OFF');
+      },
+    },
+    screen: {
+      args: 'NAME', help: 'SHOW A SCREEN, AS ?SCREEN= DOES', close: true,
+      run: ([name]) => {
+        if (!demo[name]) throw new Error('NAME IS ONE OF ' + Object.keys(demo).join(', '));
+        demo[name]();
+      },
+    },
+    seed: { help: 'SHOW THE RANDOM SEED', run: () => 'SEED ' + seed },
+  },
+});
+devConsole.print('TYPE HELP FOR A LIST OF COMMANDS.');
+game.console = devConsole;
 
 function nightSummary(w) {
   const mul = w.hard ? CFG.hardPointsMul : 1;
@@ -191,6 +274,7 @@ function update(dt) {
   clock += dt;
   input.tick(clock);
   updateSnow(snow, dt, clock);
+  if (devConsole.open) return;   // the game waits while the console is open
   game.stateT += dt;
   touch.update(clock);
   pad.update(dt, game.state);
@@ -233,6 +317,7 @@ function draw() {
       ['NIGHT ' + game.night, PAL.y, 2],
       null,
       'DELIVER ' + w.p.foodTarget + ' FOOD TO THE OLD MAN',
+      ...(game.night === WOLVES_FROM ? [['BEWARE: WOLVES STEAL FOOD!', PAL.o]] : []),
     ]);
   }
   if (s) s.draw(ctx);
@@ -245,6 +330,10 @@ function draw() {
     drawCrosshair(ctx, k.x + Math.cos(k.aim) * 34, k.y - 8 + Math.sin(k.aim) * 34);
   }
   if (params.has('debug')) drawText(ctx, 'SEED ' + seed, 4, H - 8, PAL.n);
+  if (game.cheated && (game.state === 'play' || game.state === 'paused')) {
+    drawText(ctx, 'DEV' + (game.god ? ' GOD' : ''), W - 4, H - 8, PAL.o, { align: 'right' });
+  }
+  devConsole.draw(ctx, clock);
 }
 
 function frame() {
@@ -278,6 +367,7 @@ document.addEventListener('visibilitychange', () => {
 prepareNight(firstNight);
 const demo = {
   title: () => setState('title'),
+  howto: () => setState('howto'),
   paused: () => setState('paused'),
   highscores: () => setState('highscores', { highlight: 0 }),
   initials: () => setState('initials', { score: 4200, night: 7, hard: false }),

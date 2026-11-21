@@ -41,6 +41,17 @@ export const CFG = {
   robberAttackCooldown: 1.0,
   robberDamage: 1,
 
+  // Wolves: they come for food, not for people
+  wolfRunSpeed: 150,        // closing in on a page, or arriving from the edge
+  wolfCircleSpeed: 95,      // prowling round Wenceslas while nobody carries food
+  wolfFleeSpeed: 125,       // running off with stolen food
+  wolfCircleRadius: 62,     // average distance of the prowl from Wenceslas
+  wolfLeapRange: 34,        // starts its crouch this close to the page
+  wolfCrouch: 0.3,          // telegraph before the leap
+  wolfLeapTime: 0.28,
+  wolfRecover: 0.45,        // pause after a leap that misses
+  wolfBite: 1,              // damage to the page it steals from
+
   // Hard mode
   hardSpeedMul: 1.35,
 
@@ -54,6 +65,7 @@ export const CFG = {
 };
 
 export const NIGHTS = 12;
+export const WOLVES_FROM = 3; // first night with wolves
 
 // Per-night difficulty. n runs from 1 to 12.
 export function nightParams(n) {
@@ -67,6 +79,9 @@ export function nightParams(n) {
     pageInterval: 4,
     maxFood: 3 + Math.floor(n / 4),
     foodInterval: 2.5,
+    maxWolves: n < WOLVES_FROM ? 0 : Math.min(1 + Math.floor((n - WOLVES_FROM) / 3), 4), // 1 .. 4
+    wolfInterval: Math.max(6, 16 - n),
+    firstWolf: Math.max(8, 20 - n),
   };
 }
 

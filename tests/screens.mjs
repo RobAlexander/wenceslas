@@ -23,7 +23,7 @@ for (const [i, s] of [['ROB', 21300, 12, false], ['AMY', 15800, 9, true], ['JIM'
 // Fake input: tests push keys and clicks; mouse position is settable.
 const queue = { keys: [], click: null };
 const input = {
-  st: { mouse: { x: 0, y: 0 }, mouseSeen: false },
+  st: { mouse: { x: 0, y: 0 }, mouseSeen: false, lastDevice: 'mouse' },
   takeKeys: () => queue.keys.splice(0),
   takeClick: () => { const c = queue.click; queue.click = null; return c; },
 };
@@ -60,16 +60,26 @@ const press = (...k) => { queue.keys.push(...k); current.update(1 / 60); };
 // title
 current = screens.title; current.enter(); run(2.2); snap('title');
 press('ArrowDown'); assert.ok(events.includes('menuMove')); events.length = 0;
-press('Enter'); assert.deepEqual(log.splice(0), ['go:highscores']); // second item is HIGH SCORES (hard locked)
+press('Enter'); assert.deepEqual(log.splice(0), ['go:howto']); // second item is HOW TO PLAY (hard locked)
 assert.ok(events.includes('menuSelect')); events.length = 0;
+current = screens.title; current.enter();
+press('ArrowDown', 'ArrowDown', 'Enter'); assert.deepEqual(log.splice(0), ['go:highscores']);
 current = screens.title; current.enter();
 press('Enter'); assert.deepEqual(log.splice(0), ['newGame:false']);
 store.unlockHard();
 current.enter(); press('ArrowDown'); press('Enter'); assert.deepEqual(log.splice(0), ['newGame:true']);
-// mouse: click on an item
-current.enter(); queue.click = { x: 320, y: 190 }; current.update(1 / 60);
-assert.equal(log.splice(0).join(), 'go:highscores'.replace('go:highscores', 'go:highscores'));
+// mouse: click on an item (START, HARD MODE, HOW TO PLAY, HIGH SCORES)
+current.enter(); queue.click = { x: 320, y: 210 }; current.update(1 / 60);
+assert.deepEqual(log.splice(0), ['go:highscores']);
 snap('title-hard-unlocked');
+
+// how to play: one page per device's controls; any confirm or click returns to the title
+current = screens.howto; current.enter(); run(0.4); snap('howto');
+for (const dev of ['touch', 'pad']) { input.st.lastDevice = dev; snap('howto-' + dev); }
+input.st.lastDevice = 'mouse';
+press('Enter'); assert.deepEqual(log.splice(0), ['go:title']);
+current = screens.howto; current.enter(); press('Escape'); assert.deepEqual(log, [], 'ignored for the first moment');
+run(0.4); queue.click = { x: 10, y: 10 }; current.update(1 / 60); assert.deepEqual(log.splice(0), ['go:title']);
 
 // pause
 current = screens.paused; current.enter(); run(0.5); snap('paused');

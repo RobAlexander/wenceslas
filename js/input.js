@@ -30,6 +30,7 @@ export function createInput(canvas) {
     autoAim: false,       // the buffered swing came from a tap: aim at the nearest robber
     pause: false,
     confirm: false,
+    blocked: false, // the dev console has the keyboard
     keyQueue: [],   // key codes pressed since the last takeKeys(), for menus
     click: null,    // last click or tap position (game coordinates), for menus
   };
@@ -40,6 +41,7 @@ export function createInput(canvas) {
   const pushKey = (code) => { if (st.keyQueue.length < 32) st.keyQueue.push(code); };
 
   addEventListener('keydown', (e) => {
+    if (st.blocked) return;
     if (MOVE_KEYS[e.code] || e.code === 'Space' || e.code === 'Backspace') e.preventDefault();
     keys.add(e.code);
     if (!e.repeat || REPEATABLE.has(e.code)) pushKey(e.code);
@@ -75,9 +77,11 @@ export function createInput(canvas) {
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  return {
+  const api = {
     st,
     tick(t) { now = t; },
+    // The dev console takes the keyboard: drop held keys and pending presses either way.
+    block(on) { st.blocked = on; keys.clear(); api.clearPresses(); },
 
     // Snapshot for one fixed update step.
     gameplay(cooldownLeft) {
@@ -126,4 +130,5 @@ export function createInput(canvas) {
     pushClick(x, y) { st.click = { x, y }; },                  // game coordinates
     requestPause() { st.pause = true; },
   };
+  return api;
 }

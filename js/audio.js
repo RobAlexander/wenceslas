@@ -13,7 +13,10 @@ export const SFX = {
   menuMove: 0.6, menuSelect: 0.7,
 };
 // Game event -> effect. Events without an entry (such as 'pageHurt') are silent.
-const EVENT_SFX = Object.fromEntries(Object.keys(SFX).map((n) => [n, n]));
+const EVENT_SFX = {
+  ...Object.fromEntries(Object.keys(SFX).map((n) => [n, n])),
+  wolfSteal: 'foodDrop',   // the food is lost
+};
 const VARIED = new Set(['swing', 'hit', 'pickup', 'foodDrop', 'deliver']);   // a touch of pitch variation
 const MAX_AT_ONCE = 4;                                                       // per effect, so nothing machine-guns
 

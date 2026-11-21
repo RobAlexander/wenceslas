@@ -13,7 +13,7 @@ Opening `index.html` straight from disk won't work, because ES modules need a we
 
 Optional URL parameters for testing, ignored in normal play:
 `?seed=123` (repeatable layouts), `?night=5` (skip the title and start on that night),
-`?screen=NAME` (show one screen: `title`, `paused`, `nightEnd`, `gameover`, `ending`, `initials`, `highscores`), `?debug` (shows the seed).
+`?screen=NAME` (show one screen: `title`, `howto`, `paused`, `nightEnd`, `gameover`, `ending`, `initials`, `highscores`), `?debug` (shows the seed).
 
 ## Controls
 
@@ -39,6 +39,29 @@ This is untested on real hardware; it follows the standard gamepad layout.
 
 The game aims with whichever device you used last, so you can switch between mouse, touch and gamepad at any time.
 
+**How to play** on the title menu explains the goal, shows each sprite with what it does, and lists the controls for
+the device you're using.
+
+## Dev console
+
+Press the <kbd>`</kbd> key (the one with ~ on it, below Esc) to open a console at the top of the screen. The game waits
+while it's open. Type a command and press Enter. Up and Down recall earlier commands, and <kbd>`</kbd> or Esc closes it.
+
+| Command | What it does |
+|---|---|
+| `night N` / `night N hard` | Start a run on night N (1 to 12) |
+| `win` | Finish the current night |
+| `spawn robber\|wolf\|page\|food [count]` | Add things to the current night |
+| `kill` | Remove every robber and wolf, with no points |
+| `hp N` | Set Wenceslas's health |
+| `god` | Toggle: Wenceslas takes no damage |
+| `screen NAME` | Show a screen, like `?screen=` |
+| `seed` | Show the random seed |
+| `help`, `clear` | List the commands, clear the log |
+
+A run that uses any command that changes the game is marked **DEV** in the corner and can't go on the high score table.
+Commands are defined in `js/main.js`, and the console itself is `js/devconsole.js`.
+
 ## Sound and music
 
 Sound starts at the first key press or click, because browsers don't allow it sooner.
@@ -59,7 +82,8 @@ Sound starts at the first key press or click, because browsers don't allow it so
 
 - `npm test` runs all of the checks below. None of them needs a browser.
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
-- `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, nights, pause, ending, initials, high scores, game over, plus touch gestures, a fake gamepad and the portrait pause.
+- `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
+- `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, initials, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
 - `tests/gamepad.mjs`: unit tests for the gamepad module with a fake pad (deadzones, press-only swings, menu repeat).
 - `tests/screens.mjs`: renders every menu screen to PNG in `screens-out/` (`npm run screens`) and checks their key handling.
 - `npm run smoke`: headless simulation of 24 nights with a simple bot, to catch runtime errors in the logic and drawing code.
@@ -89,6 +113,13 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - Hard mode is unlocked, and stays unlocked, once night 12 has been cleared.
 - Quitting from the pause menu doesn't record a score.
 - Robbers raise their club (with a red "!") for 0.35 s before a blow lands, so attacks can be read and interrupted.
+- Wolves appear from night 3: one at a time on nights 3 to 5, rising to four on night 12. They're faster than Wenceslas.
+  A wolf goes for the nearest page carrying food, crouches (with a red "!") for 0.3 s, then leaps. If it reaches the page,
+  it takes the food, bites the page for 1 HP and runs for the nearest edge. Killing it before it gets away drops the food.
+  With no food being carried, wolves circle loosely round Wenceslas and do no harm. One sword hit kills a wolf, for the
+  same points as a robber, and the end-of-night breakdown counts robbers and wolves together as "enemies".
+  A stolen item makes the food-dropped sound; there's no wolf sound of its own yet. Wolf numbers and speeds are in
+  `js/config.js`.
 
 ## Licence
 

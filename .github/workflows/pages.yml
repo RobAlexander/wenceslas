@@ -31,6 +31,7 @@ jobs:
       - name: Check the game logic, audio and sound files
         run: |
           node tests/highscores.mjs
+          node tests/wolves.mjs
           node tests/gamepad.mjs
           node tests/music.mjs
           node tests/audio.mjs

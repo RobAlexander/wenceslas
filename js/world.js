@@ -56,6 +56,7 @@ export class World {
     this.pages = [];   // every page, wandering or following
     this.line = [];    // following pages, front first
     this.robbers = [];
+    this.wolves = [];
     this.foods = [];
     this.particles = [];
     this.texts = [];
@@ -72,6 +73,7 @@ export class World {
     this.pageTimer = 1.5;
     this.foodTimer = 1;
     this.robberTimer = this.p.firstRobber;
+    this.wolfTimer = this.p.firstWolf;
     this.deliverTimer = 0;
 
     for (let i = 0; i < 2; i++) this.spawnFood();
@@ -170,11 +172,31 @@ export class World {
     }
     const hp = this.rng() < this.p.toughRobberChance ? 2 : 1;
     this.robbers.push({
-      id: nextId++, x: pos.x, y: pos.y, r: 4, hp, maxHp: hp, target: null, retarget: 0,
+      id: nextId++, kind: 'robber', x: pos.x, y: pos.y, r: 4, hp, maxHp: hp, target: null, retarget: 0,
       windup: 0, atkCd: 0.5, stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1,
       side: this.rng() < 0.5 ? 1 : -1,
     });
   }
+
+  spawnWolf() {
+    let pos;
+    for (let i = 0; i < 10; i++) {
+      pos = this.edgeSpawn();
+      if (dist(pos, this.king) > 140) break;
+    }
+    const wf = {
+      id: nextId++, kind: 'wolf', x: pos.x, y: pos.y, r: 4, hp: 1, maxHp: 1,
+      state: 'circle', t: 0, target: null, retarget: 0, vx: 0, vy: 0, z: 0, food: null, exit: null,
+      stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1, side: this.rng() < 0.5 ? 1 : -1,
+      entered: false, orbit: 0, dir: this.rng() < 0.5 ? 1 : -1, phase: this.rng.range(0, TAU),
+    };
+    this.startCircling(wf);
+    this.wolves.push(wf);
+    this.emit('wolf');
+  }
+
+  // Every enemy the sword can hit.
+  foes() { return [...this.robbers, ...this.wolves]; }
 
   // ---------- update ----------
 
@@ -187,6 +209,7 @@ export class World {
     this.updateTrail();
     this.updatePages(dt);
     this.updateRobbers(dt);
+    this.updateWolves(dt);
     this.updateFood(dt);
     this.updateDelivery(dt);
     this.updateSpawning(dt);
@@ -232,7 +255,7 @@ export class World {
     const k = this.king;
     const py = k.y - 8;
     let best = null, bd = CFG.autoAimRange;
-    for (const rob of this.robbers) {
+    for (const rob of this.foes()) {
       const d = Math.hypot(rob.x - k.x, rob.y - 6 - py);
       if (d < bd) { bd = d; best = rob; }
     }
@@ -244,7 +267,7 @@ export class World {
   swordHits() {
     const k = this.king;
     const px = k.x, py = k.y - 8;
-    for (const rob of this.robbers) {
+    for (const rob of this.foes()) {
       if (k.hit.has(rob.id)) continue;
       const dx = rob.x - px, dy = rob.y - 6 - py;
       const d = Math.hypot(dx, dy);
@@ -252,26 +275,38 @@ export class World {
       const slack = d > 0 ? Math.atan2(rob.r + 2, d) : Math.PI;
       if (Math.abs(angDiff(Math.atan2(dy, dx), k.swingAngle)) > CFG.swingHalfArc + slack) continue;
       k.hit.add(rob.id);
-      this.hitRobber(rob, dx / (d || 1), dy / (d || 1));
+      this.hitFoe(rob, dx / (d || 1), dy / (d || 1));
     }
   }
 
-  hitRobber(rob, nx, ny) {
-    rob.hp -= 1;
-    rob.flash = 0.12;
-    rob.stun = 0.3;
-    rob.windup = 0;
-    rob.kbx = nx * CFG.swingKnockback;
-    rob.kby = ny * CFG.swingKnockback;
+  // A sword hit on a robber or a wolf.
+  hitFoe(foe, nx, ny) {
+    const wolf = foe.kind === 'wolf';
+    foe.hp -= 1;
+    foe.flash = 0.12;
+    foe.stun = 0.3;
+    foe.kbx = nx * CFG.swingKnockback;
+    foe.kby = ny * CFG.swingKnockback;
+    if (wolf) {
+      // knocked out of a crouch or a leap
+      foe.z = 0;
+      if (foe.state !== 'flee') this.startCircling(foe);
+    } else foe.windup = 0;
     this.emit('hit');
-    if (rob.hp <= 0) {
-      this.robbers.splice(this.robbers.indexOf(rob), 1);
+    if (foe.hp <= 0) {
+      const list = wolf ? this.wolves : this.robbers;
+      list.splice(list.indexOf(foe), 1);
       this.kills++;
       this.emit('kill');
-      this.puff(rob.x, rob.y - 6, ['#5d275d', '#f4f4f4', '#333c57'], 14);
-      this.floatText(rob.x, rob.y - 16, '+' + CFG.pointsKill * this.pointsMul(), '#f4f4f4');
+      this.puff(foe.x, foe.y - 6, wolf ? ['#566c86', '#f4f4f4', '#333c57'] : ['#5d275d', '#f4f4f4', '#333c57'], 14);
+      this.floatText(foe.x, foe.y - 16, '+' + CFG.pointsKill * this.pointsMul(), '#f4f4f4');
+      if (foe.food) {
+        // a wolf killed while running off drops what it stole
+        this.spawnFood({ x: clamp(foe.x, 8, W - 8), y: clamp(foe.y, HUD_H + 10, H - 6) }, foe.food, CFG.dropPickupDelay);
+        this.emit('foodDrop');
+      }
     } else {
-      this.puff(rob.x, rob.y - 6, ['#f4f4f4'], 4);
+      this.puff(foe.x, foe.y - 6, ['#f4f4f4'], 4);
     }
   }
 
@@ -406,12 +441,12 @@ export class World {
     return best || k;
   }
 
-  damage(target, from) {
+  damage(target, from, amount = CFG.robberDamage) {
     const nx = target.x - from.x, ny = target.y - from.y, l = Math.hypot(nx, ny) || 1;
     if (target === this.king) {
       const k = this.king;
-      if (k.inv > 0) return;
-      k.hp -= CFG.robberDamage;
+      if (k.inv > 0 || k.god) return;   // god: dev console cheat
+      k.hp -= amount;
       k.inv = CFG.kingInvuln;
       k.kbx = (nx / l) * 120; k.kby = (ny / l) * 120;
       this.emit('hurt');
@@ -425,12 +460,150 @@ export class World {
     }
     const pg = target;
     if (pg.inv > 0) return;
-    pg.hp -= CFG.robberDamage;
+    pg.hp -= amount;
     pg.inv = CFG.pageInvuln;
     pg.flash = 0.12;
     pg.vx += (nx / l) * 80; pg.vy += (ny / l) * 80;
     if (pg.hp <= 0) this.killPage(pg);
     else this.emit('pageHurt');
+  }
+
+  // ---------- wolves ----------
+  //
+  // States: circle (prowl round Wenceslas), hunt (run at a page carrying food),
+  // crouch (telegraph), leap, recover (after a miss), flee (off the screen with the food).
+
+  startCircling(wf) {
+    const k = this.king;
+    wf.state = 'circle';
+    wf.target = null;
+    wf.orbit = Math.atan2((wf.y - k.y) / 0.7, wf.x - k.x); // pick up the circle where the wolf already is
+  }
+
+  nearestCarrier(wf) {
+    let best = null, bd = Infinity;
+    for (const pg of this.line) {
+      if (!pg.food) continue;
+      const d = dist(wf, pg);
+      if (d < bd) { bd = d; best = pg; }
+    }
+    return best;
+  }
+
+  updateWolves(dt) {
+    const k = this.king;
+    const decay = Math.exp(-10 * dt);
+    const has = (pg) => pg && pg.food && this.line.includes(pg);
+    for (const wf of [...this.wolves]) {
+      wf.flash -= dt;
+      wf.stun -= dt;
+      wf.retarget -= dt;
+      wf.t -= dt;
+      wf.x += wf.kbx * dt; wf.y += wf.kby * dt;
+      wf.kbx *= decay; wf.kby *= decay;
+      if (wf.stun > 0) continue;
+
+      if (wf.state === 'leap') {
+        const f = clamp(1 - wf.t / CFG.wolfLeapTime, 0, 1);
+        wf.z = Math.sin(Math.PI * f) * 8;
+        wf.x += wf.vx * dt; wf.y += wf.vy * dt;
+        wf.walkT += dt;
+        const pg = wf.target;
+        if (has(pg) && dist(wf, pg) < wf.r + pg.r + 3) { this.steal(wf, pg); continue; }
+        if (wf.t <= 0) { wf.z = 0; wf.state = 'recover'; wf.t = CFG.wolfRecover; }
+        continue;
+      }
+      if (wf.state === 'recover') {
+        if (wf.t <= 0) this.startCircling(wf);
+        continue;
+      }
+      if (wf.state === 'crouch') {
+        const pg = wf.target;
+        if (!has(pg)) { this.startCircling(wf); continue; }
+        wf.face = pg.x < wf.x ? -1 : 1;
+        if (wf.t <= 0) {
+          // aim a little ahead of a moving page
+          const lead = CFG.wolfLeapTime * 0.5;
+          const dx = pg.x + pg.vx * lead - wf.x, dy = pg.y + pg.vy * lead - wf.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const v = (d + 6) / CFG.wolfLeapTime;
+          wf.vx = (dx / d) * v; wf.vy = (dy / d) * v;
+          wf.state = 'leap';
+          wf.t = CFG.wolfLeapTime;
+          this.emit('wolfLeap');
+        }
+        continue;
+      }
+
+      let tx, ty, speed;
+      if (wf.state === 'flee') {
+        tx = wf.exit.x; ty = wf.exit.y; speed = CFG.wolfFleeSpeed;
+        if (!onScreen(wf, 10)) {
+          this.wolves.splice(this.wolves.indexOf(wf), 1);
+          this.emit('wolfEscape');
+          continue;
+        }
+      } else {
+        if (wf.retarget <= 0) { wf.target = this.nearestCarrier(wf); wf.retarget = 0.25; }
+        if (has(wf.target)) {
+          const pg = wf.target;
+          if (wf.entered && dist(wf, pg) < CFG.wolfLeapRange) {
+            wf.state = 'crouch';
+            wf.t = CFG.wolfCrouch;
+            wf.face = pg.x < wf.x ? -1 : 1;
+            continue;
+          }
+          wf.state = 'hunt';
+          tx = pg.x; ty = pg.y; speed = CFG.wolfRunSpeed;
+        } else {
+          if (wf.state !== 'circle') this.startCircling(wf);
+          // A loose, wobbling ring round Wenceslas, squashed to suit the top-down view.
+          const rad = CFG.wolfCircleRadius + Math.sin(this.time * 0.9 + wf.phase) * 14 + Math.sin(this.time * 2.3 + wf.phase * 2) * 5;
+          wf.orbit += (wf.dir * CFG.wolfCircleSpeed * 0.8 / rad) * dt;
+          tx = clamp(k.x + Math.cos(wf.orbit) * rad, 10, W - 10);
+          ty = clamp(k.y + Math.sin(wf.orbit) * rad * 0.7, HUD_H + 14, H - 6);
+          const d = Math.hypot(tx - wf.x, ty - wf.y);
+          speed = d > 40 ? CFG.wolfRunSpeed : Math.min(CFG.wolfCircleSpeed, d * 6);
+        }
+      }
+      const dx = tx - wf.x, dy = ty - wf.y, d = Math.hypot(dx, dy);
+      if (d > 0.5) {
+        const s = this.steer(wf, dx / d, dy / d);
+        const step = Math.min(speed * this.speedMul * dt, d);
+        wf.x += s.x * step;
+        wf.y += s.y * step;
+        wf.walkT += dt;
+        if (Math.abs(s.x) > 0.1) wf.face = s.x < 0 ? -1 : 1;
+      }
+      if (!wf.entered && onScreen(wf, -8)) wf.entered = true;
+      if (wf.entered && wf.state !== 'flee') {
+        wf.x = clamp(wf.x, 5, W - 5);
+        wf.y = clamp(wf.y, HUD_H + 12, H - 3);
+      }
+    }
+    this.separate(this.wolves, 8);
+    for (const wf of this.wolves) if (wf.state !== 'leap') this.collide(wf);
+  }
+
+  // The wolf takes the page's food, bites the page, and runs for the nearest edge.
+  steal(wf, pg) {
+    wf.food = pg.food;
+    pg.food = null;               // taken first, so a page that dies of the bite drops nothing
+    this.emit('wolfSteal');
+    this.puff(pg.x, pg.y - 12, ['#ffcd75', '#f4f4f4'], 6);
+    this.floatText(pg.x, pg.y - 22, 'STOLEN!', '#b13e53');
+    this.damage(pg, wf, CFG.wolfBite);
+    wf.state = 'flee';
+    wf.z = 0;
+    wf.target = null;
+    const m = 24;
+    const exits = [
+      { d: wf.x, x: -m, y: wf.y },
+      { d: W - wf.x, x: W + m, y: wf.y },
+      { d: wf.y - HUD_H, x: wf.x, y: HUD_H - m },
+      { d: H - wf.y, x: wf.x, y: H + m },
+    ];
+    wf.exit = exits.reduce((a, b) => (b.d < a.d ? b : a));
   }
 
   killPage(pg) {
@@ -500,6 +673,13 @@ export class World {
     if (this.robberTimer <= 0) {
       if (this.robbers.length < p.maxRobbers) this.spawnRobber();
       this.robberTimer = p.robberInterval * this.rng.range(0.7, 1.3);
+    }
+    if (p.maxWolves > 0) {
+      this.wolfTimer -= dt;
+      if (this.wolfTimer <= 0) {
+        if (this.wolves.length < p.maxWolves) this.spawnWolf();
+        this.wolfTimer = p.wolfInterval * this.rng.range(0.7, 1.3);
+      }
     }
   }
 

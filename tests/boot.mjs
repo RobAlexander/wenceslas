@@ -262,7 +262,7 @@ secs(0.5);
 key('Enter');
 assert.equal(game.state, 'title');
 
-// hard mode is now unlocked: the title has START, HARD MODE, HIGH SCORES
+// hard mode is now unlocked: the title has START, HARD MODE, HOW TO PLAY, HIGH SCORES
 key('ArrowDown'); key('Enter');
 assert.equal(game.state, 'play');
 assert.equal(game.hard, true);
@@ -279,11 +279,52 @@ assert.equal(game.state, 'highscores');
 secs(0.5); key('Enter');
 assert.equal(game.state, 'title');
 
-// high scores from the title
+// how to play, then high scores, from the title (START, HARD MODE, HOW TO PLAY, HIGH SCORES)
 key('ArrowDown'); key('ArrowDown'); key('Enter');
+assert.equal(game.state, 'howto');
+secs(0.5); key('Escape');
+assert.equal(game.state, 'title');
+key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('Enter');
 assert.equal(game.state, 'highscores');
 secs(0.5); click();
 assert.equal(game.state, 'title');
+
+// dev console: ` opens it and freezes the game; typed commands run on Enter
+const press = (code, k) => { fire(handlers, 'keydown', { code, key: k, repeat: false }); fire(handlers, 'keyup', { code }); };
+const type = (str) => { for (const ch of str) press(ch === ' ' ? 'Space' : 'Key' + ch.toUpperCase(), ch); frames(1); };
+const enter = () => { press('Enter'); frames(2); };
+press('Backquote', '`'); frames(1);
+assert.equal(game.console.open, true);
+type('night 7'); enter();
+assert.equal(game.console.open, false, 'the night command closes the console');
+assert.equal(game.state, 'play');
+assert.equal(game.night, 7);
+assert.equal(game.cheated, true);
+press('Backquote', '`'); frames(1);
+const frozen = game.world.time;
+press('KeyD', 'd'); secs(0.5);                                       // typing, not walking
+assert.equal(game.world.time, frozen, 'the game waits while the console is open');
+assert.equal(game.state, 'play', 'Escape and P are for the console, not pause');
+press('Backspace'); frames(1);
+type('spawn wolf 2'); enter();
+assert.equal(game.world.wolves.length, 2);
+type('god'); enter(); assert.equal(game.world.king.god, true);
+type('bogus'); enter();
+assert.ok(game.console.log.at(-1).startsWith('UNKNOWN'));
+type('night 99'); enter();
+assert.ok(game.console.log.at(-1).startsWith('ERROR'), 'bad arguments are reported, not thrown');
+assert.equal(game.night, 7);
+press('Escape'); frames(1);
+assert.equal(game.console.open, false);
+const hp0 = game.world.king.hp;
+game.world.damage(game.world.king, { x: 0, y: 0 });
+assert.equal(game.world.king.hp, hp0, 'god mode');
+// a run that used the console doesn't go on the high score table
+game.score = 999999;
+game.world.dead = true; frames(2);
+assert.equal(game.state, 'gameover');
+secs(1.2); key('Enter');
+assert.equal(game.state, 'highscores', 'no initials entry after cheating');
 
 console.log('boot: full flow passed');
 process.exit(0);   // the music's timer would otherwise keep Node running
