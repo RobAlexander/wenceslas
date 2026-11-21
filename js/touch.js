@@ -8,6 +8,17 @@ import { W, H, HUD_H } from './config.js';
 import { PAL } from './sprites.js';
 import { drawText } from './font.js';
 
+/** @typedef {{ x: number, y: number }} Point */
+/** @typedef {{ x: number, y: number, w: number, h: number }} Rect */
+/** @typedef {ReturnType<typeof import('./input.js').createInput>} Input */
+
+// The two touches being tracked, in CSS pixels (clientX/Y).
+/** @typedef {{ id: number, bx: number, by: number, x: number, y: number }} StickTouch  b: the joystick's base */
+/**
+ * s: where it started, t0: when (ms), angle: the aim while dragging (radians)
+ * @typedef {{ id: number, sx: number, sy: number, x: number, y: number, t0: number, dragging: boolean, angle: number }} AimTouch
+ */
+
 const STICK_R = 48;     // joystick radius, in CSS pixels
 const DEADZONE = 0.15;
 const DRAG_PX = 10;     // movement that turns a touch into an aim drag
@@ -18,21 +29,28 @@ const HOLD_S = 0.4;     // the aim direction stays this long after the finger li
 const PAUSE_HIT = { x: W - 56, y: 0, w: 56, h: 48 };
 const PAUSE_BOX = { x: W - 26, y: HUD_H + 3, w: 22, h: 16 };
 
+/** @param {Rect} r @param {Point} p */
 const inRect = (r, p) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
 
-// opts: { isPlaying(): bool, onFirstTap(): void }
+/**
+ * @param {Input} input
+ * @param {HTMLCanvasElement} canvas
+ * @param {{ isPlaying: () => boolean, onFirstTap?: () => void }} opts
+ */
 export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
+  /** @type {{ seen: boolean, stick: StickTouch | null, aim: AimTouch | null }} */
   const t = { seen: false, stick: null, aim: null };
   let now = 0, holdUntil = 0, firstDone = false;
 
   const rect = () => canvas.getBoundingClientRect();
+  /** @param {number} cx @param {number} cy @returns {Point} */
   const toGame = (cx, cy) => {
     const r = rect();
     return { x: ((cx - r.left) / r.width) * W, y: ((cy - r.top) / r.height) * H };
   };
 
-  function applyStick() {
-    const s = t.stick;
+  /** @param {StickTouch} s */
+  function applyStick(s) {
     const dx = s.x - s.bx, dy = s.y - s.by, len = Math.hypot(dx, dy);
     if (len > STICK_R) {                 // dragged past the edge: the base follows the thumb
       s.bx += (dx / len) * (len - STICK_R);
@@ -44,6 +62,7 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
     input.setStick('touch', (dx / len) * strength, (dy / len) * strength);
   }
 
+  /** @param {PointerEvent} e */
   function onDown(e) {
     if (e.pointerType !== 'touch') return;
     e.preventDefault?.();
@@ -55,7 +74,7 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
     if (e.clientX < innerWidth / 2) {
       if (!t.stick) {
         t.stick = { id: e.pointerId, bx: e.clientX, by: e.clientY, x: e.clientX, y: e.clientY };
-        applyStick();
+        applyStick(t.stick);
       }
     } else if (!t.aim) {
       t.aim = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, t0: e.timeStamp, dragging: false, angle: 0 };
@@ -63,12 +82,13 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
     }
   }
 
+  /** @param {PointerEvent} e */
   function onMove(e) {
     if (e.pointerType !== 'touch') return;
     const s = t.stick, a = t.aim;
     if (s && e.pointerId === s.id) {
       s.x = e.clientX; s.y = e.clientY;
-      applyStick();
+      applyStick(s);
     } else if (a && e.pointerId === a.id) {
       a.x = e.clientX; a.y = e.clientY;
       if (!a.dragging && Math.hypot(a.x - a.sx, a.y - a.sy) > DRAG_PX) a.dragging = true;
@@ -79,6 +99,7 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
     }
   }
 
+  /** @param {PointerEvent} e @param {boolean} cancelled */
   function onUp(e, cancelled) {
     if (e.pointerType !== 'touch') return;
     const s = t.stick, a = t.aim;
@@ -111,6 +132,7 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
   // ---------- drawing ----------
 
   // Dotted ring and disc, each with a dark edge so they stay visible on light snow.
+  /** @param {CanvasRenderingContext2D} ctx @param {number} cx @param {number} cy @param {number} r @param {string} color */
   function ring(ctx, cx, cy, r, color) {
     const n = Math.max(24, Math.round(r * 3));
     for (let i = 0; i < n; i += 2) {
@@ -122,8 +144,11 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
       ctx.fillRect(x, y, 2, 2);
     }
   }
+  /** @param {CanvasRenderingContext2D} ctx @param {number} cx @param {number} cy @param {number} r @param {string} color */
   function disc(ctx, cx, cy, r, color) {
-    for (const [rad, col] of [[r + 1, 'rgba(26,28,44,0.45)'], [r, color]]) {
+    /** @type {[number, string][]} radius and colour: a dark edge, then the disc */
+    const layers = [[r + 1, 'rgba(26,28,44,0.45)'], [r, color]];
+    for (const [rad, col] of layers) {
       ctx.fillStyle = col;
       for (let y = -rad; y <= rad; y++) {
         const hw = Math.round(Math.sqrt(rad * rad - y * y));
@@ -136,6 +161,7 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
     seen: () => t.seen,
 
     // Called once per update with the game clock (seconds).
+    /** @param {number} clock */
     update(clock) {
       now = clock;
       if (!t.aim && holdUntil && now >= holdUntil) {
@@ -144,6 +170,7 @@ export function createTouch(input, canvas, { isPlaying, onFirstTap }) {
       }
     },
 
+    /** @param {CanvasRenderingContext2D} ctx @param {{ night: number, time: number }} world */
     draw(ctx, world) {
       if (!t.seen || !isPlaying()) return;
       const r = rect();

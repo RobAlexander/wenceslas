@@ -84,11 +84,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - `npm run typecheck` type-checks the game code in `js/` with TypeScript, in strict mode. The game is still plain
   JavaScript with no build step: TypeScript only reads the `.js` files, and types are given in JSDoc comments such as
   `/** @param {number} n */`. It runs first in `npm test` and in the Pages workflow. `tests/` and `tools/` aren't checked.
-  - **New code must pass strict.** Any file not on the `LEGACY` list in `tools/typecheck.mjs` gets the strict check,
-    so new files are strict from the start.
-  - **Legacy files** were written before type checking. They must pass the non-strict check, so they can't get worse.
-    The check prints how many strict errors each one still has. When a file is strict-clean, the check fails until
-    it's taken off the list. The goal is an empty list.
+  Every file in `js/` must pass, including new ones.
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, initials, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.

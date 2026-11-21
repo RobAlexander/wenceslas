@@ -7,6 +7,12 @@
 
 import { W, H, CFG } from './config.js';
 
+/** @typedef {import('./world.js').GameInput} GameInput */
+/** @typedef {{ x: number, y: number }} Point */
+/** @typedef {'mouse' | 'touch' | 'pad'} Device */
+/** @typedef {'touch' | 'pad'} StickSource  devices that push stick and aim values in */
+
+/** @type {Record<string, [number, number]>} */
 const MOVE_KEYS = {
   KeyW: [0, -1], KeyA: [-1, 0], KeyS: [0, 1], KeyD: [1, 0],
   ArrowUp: [0, -1], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowRight: [1, 0],
@@ -15,11 +21,18 @@ const MOVE_KEYS = {
 // Keys that keep firing while held down, when read through takeKeys().
 const REPEATABLE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
 
+/** @param {PointerEvent} e */
 const mouseLike = (e) => e.pointerType === 'mouse' || e.pointerType === 'pen';
 
+/** @param {HTMLCanvasElement} canvas */
 export function createInput(canvas) {
+  /** @type {Set<string>} key codes held down */
   const keys = new Set();
   const coarse = !!globalThis.matchMedia?.('(pointer: coarse)').matches;
+  /**
+   * @type {{ mouse: Point, mouseSeen: boolean, lastDevice: Device, swingAt: number, autoAim: boolean,
+   *   pause: boolean, confirm: boolean, blocked: boolean, keyQueue: string[], click: Point | null }}
+   */
   const st = {
     mouse: { x: W / 2, y: H / 2 },
     mouseSeen: false,
@@ -35,9 +48,11 @@ export function createInput(canvas) {
     click: null,    // last click or tap position (game coordinates), for menus
   };
   // Stick and aim values pushed in by the touch and gamepad modules.
+  /** @type {Record<StickSource, { mx: number, my: number, aim: number | null }>} aim: radians, or null for none */
   const src = { touch: { mx: 0, my: 0, aim: null }, pad: { mx: 0, my: 0, aim: null } };
   let now = 0;
 
+  /** @param {string} code */
   const pushKey = (code) => { if (st.keyQueue.length < 32) st.keyQueue.push(code); };
 
   addEventListener('keydown', (e) => {
@@ -54,6 +69,7 @@ export function createInput(canvas) {
 
   // Pointer events, not mouse events: a tap on a phone also fires a delayed fake
   // "mousedown", which would otherwise swing a second time. Touch is handled in touch.js.
+  /** @param {PointerEvent} e */
   const toGame = (e) => {
     const r = canvas.getBoundingClientRect();
     st.mouse.x = ((e.clientX - r.left) / r.width) * W;
@@ -79,11 +95,14 @@ export function createInput(canvas) {
 
   const api = {
     st,
+    /** @param {number} t */
     tick(t) { now = t; },
     // The dev console takes the keyboard: drop held keys and pending presses either way.
+    /** @param {boolean} on */
     block(on) { st.blocked = on; keys.clear(); api.clearPresses(); },
 
     // Snapshot for one fixed update step.
+    /** @param {number} cooldownLeft  the king's swing cooldown @returns {GameInput} */
     gameplay(cooldownLeft) {
       let mx = 0, my = 0;
       for (const [code, v] of Object.entries(MOVE_KEYS)) {
@@ -97,6 +116,7 @@ export function createInput(canvas) {
       const autoAim = swing && st.autoAim;
       if (swing) { st.swingAt = -Infinity; st.autoAim = false; }
 
+      /** @type {GameInput} */
       const snap = { mx, my, swing, autoAim };
       if (st.lastDevice === 'mouse') {
         snap.ax = st.mouse.x;
@@ -104,7 +124,7 @@ export function createInput(canvas) {
       } else {
         // An aim stick or drag wins; otherwise face the way we're walking;
         // otherwise (neither) the world keeps the previous aim.
-        const a = src[st.lastDevice]?.aim;
+        const a = src[st.lastDevice].aim;
         if (a != null) snap.aimAngle = a;
         else if (Math.hypot(mx, my) > 0.2) snap.aimAngle = Math.atan2(my, mx);
       }
@@ -122,11 +142,15 @@ export function createInput(canvas) {
     },
 
     // ----- API for touch.js and gamepad.js -----
+    /** @param {Device} d */
     setDevice(d) { st.lastDevice = d; },
+    /** @param {StickSource} source @param {number} x @param {number} y */
     setStick(source, x, y) { src[source].mx = x; src[source].my = y; },
-    setAim(source, angle) { src[source].aim = angle; },       // radians, or null for none
+    /** @param {StickSource} source @param {number | null} angle  radians, or null for none */
+    setAim(source, angle) { src[source].aim = angle; },
     pressSwing(autoAim = false) { st.swingAt = now; st.autoAim = autoAim; },
     pushKey,
+    /** @param {number} x @param {number} y */
     pushClick(x, y) { st.click = { x, y }; },                  // game coordinates
     requestPause() { st.pause = true; },
   };

@@ -3,12 +3,27 @@
 import { W, H, HUD_H, CFG } from './config.js';
 import { PAL } from './sprites.js';
 import { drawText, textWidth } from './font.js';
+import { makeCanvas } from './canvas.js';
 
+/** @typedef {import('./rng.js').Rng} Rng */
+/** @typedef {import('./world.js').World} World */
+/** @typedef {import('./world.js').King} King */
+/** @typedef {import('./world.js').Page} Page */
+/** @typedef {import('./world.js').Robber} Robber */
+/** @typedef {import('./world.js').Wolf} Wolf */
+/** @typedef {import('./world.js').OldMan} OldMan */
+/** @typedef {import('./world.js').Obstacle} Obstacle */
+/** @typedef {ReturnType<typeof import('./sprites.js').loadSprites>} Sprites */
+/** @typedef {Sprites['king']} CharSprite  a character with walk frames (king, page, robber, wolf) */
+
+/**
+ * A snowflake. Far flakes are drawn under everything, near ones over it.
+ * @typedef {{ x: number, y: number, near: boolean, vy: number, ph: number, amp: number }} Flake
+ */
+
+/** @param {Rng} rng */
 export function makeGround(rng) {
-  const c = document.createElement('canvas');
-  c.width = W;
-  c.height = H;
-  const x = c.getContext('2d');
+  const { canvas: c, ctx: x } = makeCanvas(W, H);
   x.fillStyle = '#8ea2c4';
   x.fillRect(0, 0, W, H);
   // soft drifts
@@ -28,7 +43,9 @@ export function makeGround(rng) {
   return c;
 }
 
+/** @param {Rng} rng */
 export function makeSnow(rng) {
+  /** @type {Flake[]} */
   const flakes = [];
   for (let i = 0; i < 160; i++) {
     const near = rng() < 0.3;
@@ -41,6 +58,7 @@ export function makeSnow(rng) {
   return flakes;
 }
 
+/** @param {Flake[]} flakes @param {number} dt @param {number} t */
 export function updateSnow(flakes, dt, t) {
   for (const f of flakes) {
     f.y += f.vy * dt;
@@ -50,6 +68,7 @@ export function updateSnow(flakes, dt, t) {
   }
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Flake[]} flakes @param {boolean} nearLayer */
 export function drawSnow(ctx, flakes, nearLayer) {
   for (const f of flakes) {
     if (f.near !== nearLayer) continue;
@@ -59,6 +78,13 @@ export function drawSnow(ctx, flakes, nearLayer) {
   }
 }
 
+/**
+ * A character at its feet position, facing left or right, animated by walkT.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {CharSprite} spr
+ * @param {{ x: number, y: number, walkT: number, face: number }} e
+ * @param {{ moving?: boolean, flash?: boolean }} [opts]  flash: draw all white (just hit)
+ */
 function blitChar(ctx, spr, e, opts = {}) {
   const moving = opts.moving ?? true;
   const fi = moving ? Math.floor(e.walkT * 8) % 2 : 0;
@@ -69,12 +95,17 @@ function blitChar(ctx, spr, e, opts = {}) {
   ctx.drawImage(img, Math.round(e.x - spr.w / 2), Math.round(e.y - spr.h + 1 - bob));
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y */
 function shadow(ctx, x, y, w = 7) {
   ctx.fillStyle = 'rgba(41,54,111,0.35)';
   ctx.fillRect(Math.round(x - w / 2), Math.round(y), w, 2);
 }
 
 // Pixel line (Bresenham), so lines stay crisp.
+/**
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x0 @param {number} y0 @param {number} x1 @param {number} y1 @param {string} color
+ */
 function line(ctx, x0, y0, x1, y1, color) {
   x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
   const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
@@ -90,6 +121,7 @@ function line(ctx, x0, y0, x1, y1, color) {
   }
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {King} k */
 function drawSword(ctx, k) {
   const px = k.x, py = k.y - 8;
   let a = k.aim;
@@ -103,6 +135,7 @@ function drawSword(ctx, k) {
   line(ctx, hx - s * 2, hy + c * 2, hx + s * 2, hy - c * 2, PAL.y); // crossguard
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {King} k */
 function drawSwingArc(ctx, k) {
   if (k.swingT <= 0) return;
   const t = 1 - k.swingT / CFG.swingDuration;
@@ -123,6 +156,7 @@ function drawSwingArc(ctx, k) {
   }
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Extract<Obstacle, { kind: 'wall' }>} o */
 function drawWall(ctx, o) {
   const x = Math.round(o.x - o.w / 2), y = Math.round(o.y - o.h / 2), lift = 7;
   // top surface: stones under a layer of snow, with a dark rim
@@ -150,6 +184,7 @@ function drawWall(ctx, o) {
   for (let bx = x + 6; bx < x + o.w; bx += 6) ctx.fillRect(bx, fy + 4, 1, 2);
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Robber} rob */
 function drawRobber(ctx, spr, rob) {
   const moving = rob.windup <= 0 && rob.stun <= 0;
   blitChar(ctx, spr.robber, rob, { moving, flash: rob.flash > 0 });
@@ -169,6 +204,7 @@ function drawRobber(ctx, spr, rob) {
   }
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Wolf} wf */
 function drawWolf(ctx, spr, wf) {
   const crouch = wf.state === 'crouch';
   const lift = Math.round(wf.z || 0) - (crouch ? 1 : 0);   // in the air when leaping, low when crouching
@@ -186,6 +222,7 @@ function drawWolf(ctx, spr, wf) {
   }
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Page} pg */
 function drawPage(ctx, spr, pg) {
   if (pg.inv > 0 && Math.floor(pg.inv * 20) % 2) return;
   blitChar(ctx, spr.page, pg, { moving: Math.hypot(pg.vx, pg.vy) > 4, flash: pg.flash > 0 });
@@ -195,7 +232,9 @@ function drawPage(ctx, spr, pg) {
   }
 }
 
-function drawOldMan(ctx, spr, om, highlight, t) {
+// The dotted delivery ring round the old man; yellow while anyone carries food.
+/** @param {CanvasRenderingContext2D} ctx @param {OldMan} om @param {boolean} highlight @param {number} t */
+function drawDeliveryRing(ctx, om, highlight, t) {
   // delivery ring, dotted
   const r = CFG.deliverRadius;
   const n = 36;
@@ -207,6 +246,7 @@ function drawOldMan(ctx, spr, om, highlight, t) {
   }
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {OldMan} om */
 function drawOldManSprite(ctx, spr, om) {
   const s = spr.oldMan;
   shadow(ctx, om.x, om.y - 1, 9);
@@ -224,12 +264,16 @@ function drawOldManSprite(ctx, spr, om) {
   ctx.fillRect(Math.round(om.x), by + 2, 1, 1);
 }
 
+/**
+ * @param {CanvasRenderingContext2D} ctx @param {World} world @param {Sprites} spr
+ * @param {HTMLCanvasElement} ground @param {Flake[]} snow @param {number} t  clock, for animation
+ */
 export function drawWorld(ctx, world, spr, ground, snow, t) {
   ctx.drawImage(ground, 0, 0);
   drawSnow(ctx, snow, false);
 
   const carrying = world.line.some((p) => p.food);
-  drawOldMan(ctx, spr, world.oldMan, carrying, t);
+  drawDeliveryRing(ctx, world.oldMan, carrying, t);
 
   // food on the ground
   for (const f of world.foods) {
@@ -242,6 +286,7 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   }
 
   // y-sorted scene
+  /** @type {{ y: number, draw: () => void }[]} drawn back to front */
   const items = [];
   for (const o of world.obstacles) {
     const y = o.kind === 'wall' ? o.y + o.h / 2 : o.y;
@@ -285,6 +330,7 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   drawSnow(ctx, snow, true);
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Obstacle} o */
 function drawObstacle(ctx, spr, o) {
   if (o.kind === 'tree') {
     const s = spr.trees[o.variant];
@@ -296,6 +342,7 @@ function drawObstacle(ctx, spr, o) {
   } else drawWall(ctx, o);
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {World} world @param {Sprites} spr @param {number} score */
 export function drawHud(ctx, world, spr, score) {
   ctx.fillStyle = 'rgba(26,28,44,0.65)';
   ctx.fillRect(0, 0, W, HUD_H - 2);
@@ -328,6 +375,7 @@ export function drawHud(ctx, world, spr, score) {
   drawText(ctx, String(score).padStart(6, '0'), W - 4, 3, PAL.w, { align: 'right' });
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y */
 export function drawCrosshair(ctx, x, y) {
   x = Math.round(x); y = Math.round(y);
   ctx.fillStyle = PAL.k;
@@ -338,7 +386,13 @@ export function drawCrosshair(ctx, x, y) {
   ctx.fillRect(x, y - 3, 1, 2); ctx.fillRect(x, y + 2, 1, 2);
 }
 
-// Simple centred panel used by the placeholder screens in this first build.
+// A simple centred panel of text lines (the banner at the start of each night).
+// Each line is plain text, [text, colour, scale], or null for a gap.
+/**
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {(string | [string, string, number?] | null)[]} lines
+ * @param {{ scale?: number, width?: number }} [opts]
+ */
 export function drawPanel(ctx, lines, opts = {}) {
   const lh = 10 * (opts.scale || 1);
   const h = lines.length * lh + 16;
@@ -351,7 +405,7 @@ export function drawPanel(ctx, lines, opts = {}) {
   ctx.fillRect(x, y, 1, h); ctx.fillRect(x + w - 1, y, 1, h);
   lines.forEach((l, i) => {
     if (!l) return;
-    const [text, color, scale] = Array.isArray(l) ? l : [l, PAL.w, 1];
+    const [text, color, scale] = typeof l === 'string' ? [l, PAL.w, 1] : l;
     drawText(ctx, text, W / 2, y + 9 + i * lh, color, { align: 'center', scale: scale || 1 });
   });
 }

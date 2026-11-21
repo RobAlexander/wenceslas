@@ -13,17 +13,42 @@ import { drawText } from './font.js';
 import { scores } from './highscores.js';
 import { createScreens } from './screens.js';
 import { createConsole } from './devconsole.js';
+import { context2d, makeCanvas } from './canvas.js';
+
+/** @typedef {import('./screens.js').ScreenName} ScreenName */
+/** @typedef {import('./screens.js').ScreenData} ScreenData */
+/** @typedef {import('./screens.js').RunResult} RunResult */
+/** @typedef {import('./screens.js').NightSummary} NightSummary */
+/** @typedef {import('./world.js').GameInput} GameInput */
+/** @typedef {ScreenName | 'play'} GameState */
+
+/**
+ * @typedef {object} Game
+ * @property {GameState} state
+ * @property {import('./screens.js').Screen<any> | null} screen  the active screen; null while playing
+ * @property {number} night
+ * @property {boolean} hard
+ * @property {number} score        banked at the end of each night
+ * @property {number} kingHp       carried from night to night
+ * @property {World} world         the current night (kept, frozen, behind overlay screens)
+ * @property {HTMLCanvasElement} ground
+ * @property {number} stateT       time in the current state
+ * @property {number} banner       time left on the start-of-night banner
+ * @property {boolean} god         dev console: Wenceslas takes no damage
+ * @property {boolean} cheated     dev console used during this run: it can't go on the high score table
+ * @property {string[]} events     drained each frame, for sound
+ * @property {ReturnType<typeof createInput>} input
+ * @property {ReturnType<typeof createAudio>} audio
+ * @property {import('./devconsole.js').DevConsole} [console]
+ */
 
 // The game draws into a hidden 640x360 buffer (ctx). Each frame the buffer is
 // copied to the visible canvas, enlarged by a whole number so pixels stay square.
 // The browser then shrinks that slightly to fill the window ("sharp bilinear"
 // scaling), which looks crisp at any window size and is exact at whole-number fits.
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('game'));
-const screenCtx = canvas.getContext('2d');
-const buffer = document.createElement('canvas');
-buffer.width = W;
-buffer.height = H;
-const ctx = buffer.getContext('2d');
+const screenCtx = context2d(canvas);
+const { canvas: buffer, ctx } = makeCanvas(W, H);
 ctx.imageSmoothingEnabled = false;
 
 let upscale = 0;
@@ -84,28 +109,43 @@ const spr = loadSprites();
 const input = createInput(canvas);
 const snow = makeSnow(rng);
 const backdrop = makeGround(fxRng);
+// Sound starts at the first key press or click: browsers don't allow it before that.
+const audio = createAudio();
 
+/** @type {string[]} */
+const events = [];
+
+// A night's world and its ground texture.
+/** @param {number} n @param {boolean} hard @param {number} kingHp @param {boolean} god */
+function makeNight(n, hard, kingHp, god) {
+  const world = new World({ night: n, hard, rng, events, kingHp });
+  world.king.god = god;
+  return { world, ground: makeGround(rng) };
+}
+
+// The first night is made straight away, so there is always a world to draw behind the menus.
+const first = makeNight(firstNight, false, CFG.kingMaxHp, false);
+
+/** @type {Game} */
 const game = {
-  state: 'title', // title | howto | play | paused | nightEnd | gameover | ending | initials | highscores
+  state: 'title',
   screen: null,
   night: firstNight,
   hard: false,
   score: 0,
   kingHp: CFG.kingMaxHp,
-  world: null,
-  ground: null,
+  world: first.world,
+  ground: first.ground,
   stateT: 0,
   banner: 0,
-  god: false,     // dev console: Wenceslas takes no damage
-  cheated: false, // dev console used during this run: it can't go on the high score table
-  events: [], // drained each frame; sound will hook in here
+  god: false,
+  cheated: false,
+  events,
+  input,
+  audio,
 };
 /** @type {any} */ (window).__wenceslas = game; // handy for debugging and automated tests
-game.input = input;
 
-// Sound starts at the first key press or click: browsers don't allow it before that.
-const audio = createAudio();
-game.audio = audio;
 for (const type of ['pointerdown', 'keydown', 'touchend']) addEventListener(type, () => audio.unlock(), { passive: true });
 
 const touch = createTouch(input, canvas, { isPlaying: () => game.state === 'play', onFirstTap: enterFullscreen });
@@ -113,30 +153,42 @@ const pad = createGamepad(input);
 
 // ---------- flow ----------
 
-function setState(name, data) {
+// Every change of state: clears pending presses and tells the music.
+/** @param {GameState} name */
+function enterState(name) {
   const prev = game.state;
   game.state = name;
-  game.screen = screens[name] || null;
+  game.screen = null;
   game.stateT = 0;
   input.clearPresses();
   audio.onState(name, prev);
-  if (game.screen) game.screen.enter(data);
 }
 
-function prepareNight(n) {
-  game.night = n;
-  game.world = new World({ night: n, hard: game.hard, rng, events: game.events, kingHp: game.kingHp });
-  game.world.king.god = game.god;
-  game.ground = makeGround(rng);
+// Show a screen (a menu or an overlay), entering it with that screen's data.
+/**
+ * @template {ScreenName} K
+ * @param {K} name
+ * @param {ScreenData[K]} [data]
+ */
+function setState(name, data) {
+  enterState(name);
+  game.screen = screens[name];
+  game.screen.enter(data);
 }
 
+// Back to the game itself (no screen).
+function enterPlay() { enterState('play'); }
+
+/** @param {number} n */
 function startNight(n) {
-  prepareNight(n);
+  game.night = n;
+  ({ world: game.world, ground: game.ground } = makeNight(n, game.hard, game.kingHp, game.god));
   game.banner = 2.5;
-  setState('play');
+  enterPlay();
 }
 
 const actions = {
+  /** @param {boolean} hard */
   newGame(hard, night = 1) {
     game.hard = hard;
     game.score = 0;
@@ -144,7 +196,7 @@ const actions = {
     game.cheated = game.god;
     startNight(night);
   },
-  resume() { setState('play'); },
+  resume() { enterPlay(); },
   quitToTitle() { setState('title'); },
   nextNight() {
     if (game.night >= NIGHTS) { setState('ending', { score: game.score, night: game.night, hard: game.hard }); return; }
@@ -154,6 +206,7 @@ const actions = {
     startNight(game.night + 1);
   },
   // After a run ends (game over or the ending): initials if it made the table.
+  /** @param {RunResult} run */
   finishRun(run) {
     if (scores.qualifies(run.score) && !game.cheated) setState('initials', run);
     else setState('highscores', { highlight: 0 });
@@ -166,6 +219,8 @@ const screens = createScreens({
 
 // ---------- dev console (the ` key) ----------
 
+// A whole-number command argument in [lo, hi]; what names it in the error.
+/** @param {string | undefined} s @param {number} lo @param {number} hi @param {string} what */
 const int = (s, lo, hi, what) => {
   const n = Number(s);
   if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(what + ' MUST BE ' + lo + ' TO ' + hi);
@@ -176,6 +231,7 @@ const inPlay = () => {
   game.cheated = true;
   return game.world;
 };
+/** @type {Record<string, (w: World) => void>} */
 const SPAWN = {
   robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
 };
@@ -196,7 +252,7 @@ const devConsole = createConsole({
       run: () => {
         const w = inPlay();
         w.delivered = w.p.foodTarget; w.done = true; w.emit('nightComplete');
-        if (game.state === 'paused') setState('play');
+        if (game.state === 'paused') enterPlay();
       },
     },
     spawn: {
@@ -225,7 +281,7 @@ const devConsole = createConsole({
       run: () => {
         game.god = !game.god;
         if (game.god) game.cheated = true;
-        if (game.world) game.world.king.god = game.god;
+        game.world.king.god = game.god;
         return 'GOD MODE ' + (game.god ? 'ON' : 'OFF');
       },
     },
@@ -242,6 +298,7 @@ const devConsole = createConsole({
 devConsole.print('TYPE HELP FOR A LIST OF COMMANDS.');
 game.console = devConsole;
 
+/** @param {World} w @returns {NightSummary} */
 function nightSummary(w) {
   const mul = w.hard ? CFG.hardPointsMul : 1;
   const par = parTime(w.p.foodTarget);
@@ -257,19 +314,20 @@ function nightSummary(w) {
   };
 }
 
+// The score shown in the HUD: banked points plus what this night has earned so far.
 function liveScore() {
-  const w = game.world;
   if (game.state !== 'play' && game.state !== 'paused') return game.score;
-  const mul = w.hard ? CFG.hardPointsMul : 1;
-  return game.score + (w.delivered * CFG.pointsFood + w.kills * CFG.pointsKill) * mul;
+  return game.score + liveEarned(game.world);
 }
 
 // ---------- loop ----------
 
 const STEP = 1 / 60;
+/** @type {GameInput} */
 const IDLE = { mx: 0, my: 0, swing: false };
 let acc = 0, last = performance.now() / 1000, clock = 0;
 
+/** @param {number} dt */
 function update(dt) {
   clock += dt;
   input.tick(clock);
@@ -296,10 +354,11 @@ function update(dt) {
   }
   // Let particles and floating text settle behind the overlays.
   if (game.state === 'nightEnd' || game.state === 'gameover') w.update(dt, IDLE);
-  game.screen.update(dt);
+  game.screen?.update(dt);
 }
 
 // Points earned so far this night (a night that ends in defeat still counts).
+/** @param {World} w */
 function liveEarned(w) {
   const mul = w.hard ? CFG.hardPointsMul : 1;
   return (w.delivered * CFG.pointsFood + w.kills * CFG.pointsKill) * mul;
@@ -313,12 +372,14 @@ function draw() {
     drawHud(ctx, w, spr, liveScore());
   }
   if (game.state === 'play' && game.banner > 0) {
-    drawPanel(ctx, [
+    /** @type {Parameters<typeof drawPanel>[1]} */
+    const lines = [
       ['NIGHT ' + game.night, PAL.y, 2],
       null,
       'DELIVER ' + w.p.foodTarget + ' FOOD TO THE OLD MAN',
-      ...(game.night === WOLVES_FROM ? [['BEWARE: WOLVES STEAL FOOD!', PAL.o]] : []),
-    ]);
+    ];
+    if (game.night === WOLVES_FROM) lines.push(['BEWARE: WOLVES STEAL FOOD!', PAL.o]);
+    drawPanel(ctx, lines);
   }
   if (s) s.draw(ctx);
   touch.draw(ctx, w);
@@ -364,7 +425,7 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- start ----------
 
-prepareNight(firstNight);
+/** @type {Record<string, () => void>} */
 const demo = {
   title: () => setState('title'),
   howto: () => setState('howto'),

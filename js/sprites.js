@@ -1,6 +1,8 @@
 // Pixel-art sprites, defined as text so they're easy to edit.
 // Palette is based on Sweetie 16, plus a skin tone and two browns.
 
+import { makeCanvas } from './canvas.js';
+
 export const PAL = {
   k: '#1a1c2c', P: '#5d275d', r: '#b13e53', o: '#ef7d57', y: '#ffcd75',
   l: '#a7f070', g: '#38b764', G: '#257179', d: '#29366f', B: '#3b5dc9',
@@ -84,7 +86,9 @@ const WOLF_LEGS = [
   ['.D...D.D...D.', 'k.....k.....k'],
 ];
 
-export const FOOD_KINDS = ['bread', 'meat', 'wine'];
+export const FOOD_KINDS = /** @type {const} */ (['bread', 'meat', 'wine']);
+/** @typedef {typeof FOOD_KINDS[number]} FoodKind */
+/** @type {Record<FoodKind, string[]>} */
 const FOOD = {
   bread: ['.bbbbb.', 'byoyoyb', 'bbbbbbb', '.bbbbb.'],
   meat: ['..rrr..', '.rrorr.', '.rrrr..', '..ww...', '...ww..'],
@@ -101,29 +105,27 @@ const PARTRIDGE = [
   '....o.o..',
 ];
 
+// One pixel per character, coloured from PAL ('.' and ' ' are transparent).
+// tint draws every pixel in that colour instead (for the white hit flash).
+/** @param {string[]} rows @param {string} [tint] */
 function build(rows, tint) {
   const h = rows.length;
   const w = Math.max(...rows.map((r) => r.length));
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const x = c.getContext('2d');
+  const { canvas: c, ctx: x } = makeCanvas(w, h);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < rows[j].length; i++) {
       const ch = rows[j][i];
       if (ch === '.' || ch === ' ') continue;
-      x.fillStyle = tint || PAL[ch] || '#ff00ff';
+      x.fillStyle = tint || PAL[/** @type {keyof typeof PAL} */ (ch)] || '#ff00ff';   // magenta: unknown letter
       x.fillRect(i, j, 1, 1);
     }
   }
   return c;
 }
 
+/** @param {HTMLCanvasElement} src  @returns {HTMLCanvasElement} mirrored left to right */
 function flip(src) {
-  const c = document.createElement('canvas');
-  c.width = src.width;
-  c.height = src.height;
-  const x = c.getContext('2d');
+  const { canvas: c, ctx: x } = makeCanvas(src.width, src.height);
   x.translate(src.width, 0);
   x.scale(-1, 1);
   x.drawImage(src, 0, 0);
@@ -132,6 +134,7 @@ function flip(src) {
 
 // A character sprite has two walk frames, each in normal, flipped and
 // white (hit flash) versions.
+/** @param {string[]} body @param {string[][]} [legFrames] one set of leg rows per walk frame */
 function character(body, legFrames = LEGS) {
   const frames = legFrames.map((legs) => {
     const rows = [...body, ...legs];
@@ -142,19 +145,18 @@ function character(body, legFrames = LEGS) {
   return { frames, w: frames[0].normal.width, h: frames[0].normal.height };
 }
 
+/** @param {string[]} rows */
 function single(rows) {
   const img = build(rows);
   return { img, flipped: flip(img), w: img.width, h: img.height };
 }
 
+/** @param {number} variant  0: three tiers, 1: four */
 function makeTree(variant) {
   const tiers = variant ? 4 : 3;
   const w = 17;
   const h = tiers * 6 + 6;
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const x = c.getContext('2d');
+  const { canvas: c, ctx: x } = makeCanvas(w, h);
   const cx = 8;
   // trunk
   x.fillStyle = PAL.m;

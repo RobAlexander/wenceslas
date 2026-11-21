@@ -1,8 +1,7 @@
 {
   // Type-checks the plain JavaScript with TypeScript, in strict mode. Nothing is compiled:
-  // the game still ships as the .js files themselves. Run with: npm run typecheck
-  // (tools/typecheck.mjs), which also allows a shrinking list of older files that
-  // only pass the non-strict check so far.
+  // the game still ships as the .js files themselves. Types are given in JSDoc comments.
+  // Run with: npm run typecheck
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,

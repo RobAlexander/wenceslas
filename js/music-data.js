@@ -49,6 +49,10 @@ export const ROWS_PER_PHRASE = 16;
 //   bpm          quarter notes per minute (slow at first, a little faster each stage)
 //   voices       which channels play: [lead, harmony, bass, percussion]
 //   instruments  what each channel plays
+/** @typedef {'bell' | 'choir' | 'strings' | 'bass' | 'perc'} Instrument */
+/**
+ * @type {{ phrases: number[], bpm: number, voices: number[], instruments: (Instrument | null)[] }[]}
+ */
 export const STAGES = [
   { phrases: [0],                         bpm: 56, voices: [1, 0, 0, 0], instruments: ['bell',  null,      null,   null] },
   { phrases: [0, 1],                      bpm: 62, voices: [1, 0, 1, 0], instruments: ['bell',  null,      'bass', null] },

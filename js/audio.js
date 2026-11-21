@@ -12,9 +12,13 @@ export const SFX = {
   foodDrop: 0.75, deliver: 0.85, nightComplete: 0.9, gameover: 1.0, partridge: 0.9,
   menuMove: 0.6, menuSelect: 0.7,
 };
+/** @typedef {keyof typeof SFX} SfxName */
+const SFX_NAMES = /** @type {SfxName[]} */ (Object.keys(SFX));
+
 // Game event -> effect. Events without an entry (such as 'pageHurt') are silent.
+/** @type {Record<string, SfxName | undefined>} */
 const EVENT_SFX = {
-  ...Object.fromEntries(Object.keys(SFX).map((n) => [n, n])),
+  ...Object.fromEntries(SFX_NAMES.map(/** @returns {[string, SfxName]} */ (n) => [n, n])),   // each effect's own event
   wolfSteal: 'foodDrop',   // the food is lost
 };
 const VARIED = new Set(['swing', 'hit', 'pickup', 'foodDrop', 'deliver']);   // a touch of pitch variation
@@ -22,7 +26,10 @@ const MAX_AT_ONCE = 4;                                                       // 
 
 const MUTE_KEY = 'wenceslas.muted';
 
+/** @typedef {{ run: false } | { run: true, stage: number | null, duck: number }} MusicPlan */
+
 // What the music should be doing in each game state. stage: null leaves the current stage alone.
+/** @param {string} state @returns {MusicPlan} */
 export function musicPlan(state, progress = 0) {
   switch (state) {
     case 'play':     return { run: true, stage: stageFor(progress), duck: 1 };
@@ -34,24 +41,45 @@ export function musicPlan(state, progress = 0) {
   }
 }
 
+/** @param {BaseAudioContext} ctx @param {SfxName} name @returns {Promise<AudioBuffer>} */
 async function defaultLoad(ctx, name) {
   const res = await fetch(new URL(`../audio/sfx/${name}.wav`, import.meta.url));
   if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
   const bytes = await res.arrayBuffer();
   return new Promise((resolve, reject) => {
     // The callback form works in every browser, including old Safari.
-    const p = ctx.decodeAudioData(bytes, resolve, reject);
-    if (p && p.then) p.then(resolve, reject);
+    // Old Safari returns nothing here rather than a promise.
+    const p = /** @type {Promise<AudioBuffer> | undefined} */ (ctx.decodeAudioData(bytes, resolve, reject));
+    p?.then(resolve, reject);
   });
 }
 
+/**
+ * Everything is injectable, so the module can be tested with a fake AudioContext.
+ * @typedef {object} AudioOptions
+ * @property {(new () => AudioContext) | undefined} [AudioContextClass]  undefined: no audio here
+ * @property {(ctx: AudioContext, name: SfxName) => Promise<AudioBuffer> | AudioBuffer} [load]
+ * @property {Pick<Storage, 'getItem' | 'setItem'> | null} [storage]       for the mute setting
+ */
+
+/** @param {AudioOptions} [opts] */
 export function createAudio({
-  AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext,
+  AudioContextClass = globalThis.AudioContext || /** @type {{ webkitAudioContext?: typeof AudioContext }} */ (globalThis).webkitAudioContext,
   load = defaultLoad,
   storage = (() => { try { return globalThis.localStorage; } catch { return null; } })(),
 } = {}) {
-  let ctx = null, master = null, sfxBus = null, music = null;
+  // All made at the first key press or click (see unlock), and null until then.
+  /** @type {AudioContext | null} */
+  let ctx = null;
+  /** @type {GainNode | null} */
+  let master = null;
+  /** @type {GainNode | null} */
+  let sfxBus = null;
+  /** @type {ReturnType<typeof createMusic> | null} */
+  let music = null;
+  /** @type {Partial<Record<SfxName, AudioBuffer>>} */
   const buffers = {};
+  /** @type {Partial<Record<SfxName, number>>} how many of each effect are sounding */
   const playing = {};
   const cur = { state: 'title', progress: 0 };
   let muted = false;
@@ -82,7 +110,7 @@ export function createAudio({
       applyMute();
       music = createMusic(ctx, master);
       applyPlan();
-      for (const name of Object.keys(SFX)) {
+      for (const name of SFX_NAMES) {
         Promise.resolve(load(ctx, name)).then((b) => { buffers[name] = b; }).catch(() => { /* that effect stays silent */ });
       }
     } catch {
@@ -90,9 +118,10 @@ export function createAudio({
     }
   }
 
+  /** @param {SfxName} name */
   function playSfx(name) {
     const buf = buffers[name];
-    if (!ctx || muted || !buf) return;
+    if (!ctx || !sfxBus || muted || !buf) return;
     if ((playing[name] || 0) >= MAX_AT_ONCE) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -102,7 +131,7 @@ export function createAudio({
     src.connect(g);
     g.connect(sfxBus);
     playing[name] = (playing[name] || 0) + 1;
-    src.onended = () => { playing[name]--; };
+    src.onended = () => { playing[name] = (playing[name] || 1) - 1; };
     src.start();
   }
 
@@ -110,6 +139,7 @@ export function createAudio({
     unlock,
 
     // Play the effects for this frame's game events.
+    /** @param {string[]} events */
     handle(events) {
       for (const e of events) {
         const name = EVENT_SFX[e];
@@ -118,6 +148,7 @@ export function createAudio({
     },
 
     // The game changed state (from `prev`). A new night starts the music from the opening phrase.
+    /** @param {string} state @param {string} prev */
     onState(state, prev) {
       cur.state = state;
       if (state === 'play' && prev !== 'paused') { cur.progress = 0; if (music) music.restart(0); }
@@ -126,6 +157,7 @@ export function createAudio({
     },
 
     // How far through the night's food target we are, 0 to 1.
+    /** @param {number} frac */
     setProgress(frac) {
       if (frac === cur.progress) return;
       cur.progress = frac;

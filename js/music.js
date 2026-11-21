@@ -11,24 +11,82 @@
 
 import { SONG } from './music-data.js';
 
+/** @typedef {typeof SONG} Song */
+/** @typedef {import('./music-data.js').Instrument} Instrument */
+/** @typedef {'K' | 'S' | 'H'} Perc  kick, snare, hi-hat */
+/** @typedef {'bell' | 'choir' | 'strings' | 'bass'} Pitched */
+/** @typedef {Pitched | Perc} SampleName */
+
+/**
+ * One row of one channel in a pattern: null (the previous note carries on), a note-off,
+ * a note, or a percussion hit.
+ * @typedef {null | { off: true } | { midi: number } | { perc: Perc }} Cell
+ */
+
+/**
+ * A phrase ready to play, from Sequencer.nextPhrase().
+ * @typedef {object} Phrase
+ * @property {number} id
+ * @property {number} stage
+ * @property {number} bpm
+ * @property {number} rows
+ * @property {Cell[][]} parts                    one list of cells per channel
+ * @property {number[]} voices                   1 if that channel plays
+ * @property {(Instrument | null)[]} instruments
+ */
+
+/**
+ * An instrument sample, as mono floats quantised to 8 bits.
+ * @typedef {object} Sample
+ * @property {Float32Array<ArrayBuffer>} data
+ * @property {number} period                    in samples (0: unpitched)
+ * @property {[number, number] | null} loop     loop start and end, in samples; null: one shot
+ * @property {number} baseFreq                   the pitch it plays at a playback rate of 1
+ */
+
+/** @typedef {{ attack: number, release: number, gain: number, ring?: boolean }} Voicing */
+
+/**
+ * One note to play.
+ * @typedef {object} NoteEvent
+ * @property {number} ch
+ * @property {SampleName} sample
+ * @property {number} when       seconds
+ * @property {number} duration
+ * @property {number} rate       playback rate
+ * @property {number} vol
+ * @property {Voicing | null} voicing
+ */
+
+/**
+ * The parts of an AudioContext the player uses. Old browsers may lack a stereo panner
+ * and AudioBuffer.copyToChannel, so those are optional here and checked before use.
+ * @typedef {Omit<BaseAudioContext, 'createStereoPanner'> & { createStereoPanner?: BaseAudioContext['createStereoPanner'] }} AudioCtx
+ */
+
 export const SAMPLE_RATE = 11025;
 export const CHANNELS = 4;
 
 // ---------------------------------------------------------------- notes and patterns
 const SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
+// "C#4" -> 61, or null if it isn't a note name.
+/** @param {string} name @returns {number | null} */
 export function noteToMidi(name) {
   const m = /^([A-G])([#b]?)(-?\d)$/.exec(name);
   if (!m) return null;
-  return 12 * (Number(m[3]) + 1) + SEMITONE[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+  const letter = /** @type {keyof typeof SEMITONE} */ (m[1]);
+  return 12 * (Number(m[3]) + 1) + SEMITONE[letter] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
 }
+/** @param {number} midi */
 export const midiToFreq = (midi) => 440 * 2 ** ((midi - 69) / 12);
 
 // "G4 . . - K" -> one cell per row: null (continue), { off: true }, { midi } or { perc }.
+/** @param {string} text @param {number} rows @returns {Cell[]} */
 export function parseRow(text, rows, percussion = false) {
   const tokens = text.replace(/\|/g, ' ').trim().split(/\s+/);
   if (tokens.length !== rows) throw new Error(`pattern has ${tokens.length} rows, expected ${rows}: "${text}"`);
-  return tokens.map((t) => {
+  return tokens.map(/** @returns {Cell} */ (t) => {
     if (t === '.') return null;
     if (t === '-') return { off: true };
     if (percussion) {
@@ -42,6 +100,7 @@ export function parseRow(text, rows, percussion = false) {
 }
 
 // Which stage a night's progress (food delivered / food needed) calls for.
+/** @param {number} progress @param {readonly number[]} [thresholds] */
 export function stageFor(progress, thresholds = SONG.thresholds) {
   let stage = 0;
   for (let i = 0; i < thresholds.length; i++) if (progress >= thresholds[i]) stage = i;
@@ -50,8 +109,14 @@ export function stageFor(progress, thresholds = SONG.thresholds) {
 
 // ---------------------------------------------------------------- the sequencer
 export class Sequencer {
+  /** @param {Song} [song] */
   constructor(song = SONG) {
     this.song = song;
+    this.stage = 0;
+    /** @type {number | null} a stage asked for, to start at the next phrase */
+    this.pending = null;
+    /** @type {number | null} the phrase played last */
+    this.lastId = null;
     this.parsed = song.phrases.map((p) => [
       parseRow(p.lead, song.rowsPerPhrase), parseRow(p.harm, song.rowsPerPhrase),
       parseRow(p.bass, song.rowsPerPhrase), parseRow(p.perc, song.rowsPerPhrase, true),
@@ -66,12 +131,14 @@ export class Sequencer {
   }
 
   // Ask for a stage. It takes effect at the next phrase boundary, not before.
+  /** @param {number} n */
   setStage(n) {
     n = Math.max(0, Math.min(this.song.stages.length - 1, n | 0));
     this.pending = n === this.stage ? null : n;
   }
 
   // The phrase to play next. Called once per phrase, at its boundary.
+  /** @returns {Phrase} */
   nextPhrase() {
     if (this.pending !== null) { this.stage = this.pending; this.pending = null; }
     const st = this.song.stages[this.stage];
@@ -92,11 +159,18 @@ export class Sequencer {
 
 // ---------------------------------------------------------------- instrument samples
 const TAU = Math.PI * 2;
+/** @param {number} v */
 const quantize8 = (v) => Math.round(Math.max(-1, Math.min(1, v)) * 127) / 127;   // 8-bit, as on the Amiga
 
 // A pitched, looped sample: a sum of partials. Every partial completes a whole number of cycles
 // over the loop, so the loop is seamless. `chorus` adds partials one cycle either side of each
 // partial (about 13 cents apart) for a slow shimmer that still loops cleanly.
+/**
+ * @param {number} periodSamples @param {number} cycles
+ * @param {(f: number, k: number) => number} amp  loudness of partial k, at frequency f
+ * @param {boolean} chorus
+ * @returns {Sample}
+ */
 function loopedTone(periodSamples, cycles, amp, chorus) {
   const length = periodSamples * cycles;
   const data = new Float32Array(length);
@@ -112,8 +186,10 @@ function loopedTone(periodSamples, cycles, amp, chorus) {
   return { data, period: periodSamples, loop: [0, length], baseFreq: base };
 }
 
+/** @param {number} f @param {number} centre @param {number} bw */
 const formant = (f, centre, bw) => Math.exp(-(((f - centre) / bw) ** 2));
 
+/** @param {Sample} s */
 function normalise(s, peak = 0.9) {
   let m = 1e-9;
   for (const v of s.data) m = Math.max(m, Math.abs(v));
@@ -133,6 +209,7 @@ function noiseSource(seed = 12345) {
   };
 }
 
+/** @returns {Record<SampleName, Sample>} */
 export function makeSamples() {
   const P = 42;   // period in samples: 262.5 Hz at 11025 Hz, a hair above middle C
 
@@ -152,6 +229,7 @@ export function makeSamples() {
     const t = i / SAMPLE_RATE, env = Math.exp(-3.2 * t) * Math.min(1, t / 0.002), idx = 3.5 * Math.exp(-2.6 * t);
     bellData[i] = env * (0.7 * Math.sin(TAU * f0 * t + idx * Math.sin(TAU * f0 * 3.5 * t)) + 0.3 * Math.sin(TAU * f0 * 2 * t));
   }
+  /** @type {Sample} */
   const bell = { data: bellData, period: P, loop: null, baseFreq: f0 };
 
   // percussion: unpitched one-shots, played at their natural rate
@@ -174,6 +252,7 @@ export function makeSamples() {
     const x = rand(); y += 0.9 * (x - y); z += 0.2 * (y - z);   // crude high-pass
     hatData[i] = (y - z) * Math.exp(-t * 70);
   }
+  /** @param {Float32Array<ArrayBuffer>} data @returns {Sample} */
   const unpitched = (data) => ({ data, period: 0, loop: null, baseFreq: 0 });
 
   return {
@@ -183,20 +262,24 @@ export function makeSamples() {
 }
 
 // How each instrument is shaped over a note's length, and how loud and where it sits.
+/** @type {Record<Pitched, Voicing>} */
 export const VOICING = {
   bell:    { attack: 0.002, release: 0.18, gain: 1.0,  ring: true },   // rings out on its own
   choir:   { attack: 0.18,  release: 0.35, gain: 0.85 },
   strings: { attack: 0.14,  release: 0.30, gain: 0.30 },
   bass:    { attack: 0.01,  release: 0.10, gain: 0.30 },
 };
+/** @type {Record<Perc, number>} */
 export const PERC_GAIN = { K: 0.5, S: 0.28, H: 0.15 };
 export const MUSIC_GAIN = 0.6;   // overall music level; sound effects sit on top of it
 export const PAN = [-0.55, 0.55, 0.55, -0.55];   // Amiga style: channels 0 and 3 left, 1 and 2 right
 
 // Every note of one phrase, as plain data: { ch, sample, when, duration, rate, vol, voicing }.
 // The player below turns these into Web Audio nodes; tools/render_music.mjs mixes them to a file.
+/** @param {Phrase} phrase @param {number} t0 @param {Record<SampleName, Sample>} samples */
 export function phraseEvents(phrase, t0, samples) {
   const rowDur = 60 / phrase.bpm / 2;
+  /** @type {NoteEvent[]} */
   const events = [];
   for (let ch = 0; ch < CHANNELS; ch++) {
     if (!phrase.voices[ch]) continue;
@@ -204,9 +287,10 @@ export function phraseEvents(phrase, t0, samples) {
     const name = phrase.instruments[ch];
     for (let r = 0; r < phrase.rows; r++) {
       const cell = cells[r];
-      if (!cell || cell.off) continue;
+      if (!cell || 'off' in cell) continue;
       const when = t0 + r * rowDur;
-      if (cell.perc) { events.push({ ch, sample: cell.perc, when, duration: 0.25, rate: 1, vol: PERC_GAIN[cell.perc], voicing: null }); continue; }
+      if ('perc' in cell) { events.push({ ch, sample: cell.perc, when, duration: 0.25, rate: 1, vol: PERC_GAIN[cell.perc], voicing: null }); continue; }
+      if (!name || name === 'perc') continue;         // a note on a channel with no pitched instrument
       let e = r + 1;                                  // the note lasts until the next event on this channel
       while (e < phrase.rows && !cells[e]) e++;
       const v = VOICING[name];
@@ -222,22 +306,27 @@ export function phraseEvents(phrase, t0, samples) {
 
 // ---------------------------------------------------------------- the player
 // ctx: an AudioContext (or anything shaped like one). out: the node to connect to.
+/** @param {AudioCtx} ctx @param {AudioNode} out @param {{ song?: Song, baseGain?: number }} [opts] */
 export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {}) {
   const seq = new Sequencer(song);
   const samples = makeSamples();
+  /** @type {Partial<Record<SampleName, AudioBuffer>>} */
   const buffers = {};
-  for (const [name, s] of Object.entries(samples)) {
+  for (const name of /** @type {SampleName[]} */ (Object.keys(samples))) {
+    const s = samples[name];
     const b = ctx.createBuffer(1, s.data.length, SAMPLE_RATE);
-    if (b.copyToChannel) b.copyToChannel(s.data, 0); else b.getChannelData(0).set(s.data);
+    if (typeof b.copyToChannel === 'function') b.copyToChannel(s.data, 0); else b.getChannelData(0).set(s.data);
     buffers[name] = b;
   }
 
   const bus = ctx.createGain();
   bus.gain.value = baseGain;
   bus.connect(out);
+  /** @type {GainNode[]} one gain per channel */
   const chan = [];
   for (let c = 0; c < CHANNELS; c++) {
     const g = ctx.createGain();
+    /** @type {AudioNode} */
     let node = g;
     if (ctx.createStereoPanner) {
       const p = ctx.createStereoPanner();
@@ -250,12 +339,19 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
   }
 
   const LOOKAHEAD = 0.3, TICK_MS = 60;
-  let timer = null, nextTime = 0, running = false, duck = 1, phraseCount = 0;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let timer = null;
+  let nextTime = 0, running = false, duck = 1, phraseCount = 0;
+  /** @type {Set<{ src: AudioBufferSourceNode, g: GainNode }>} */
   let live = new Set();   // notes that may still be sounding, so we can cut them on restart or stop
 
+  /**
+   * @param {SampleName} sampleName @param {number} when @param {number} duration @param {number} rate
+   * @param {number} vol @param {number} ch @param {Voicing | null} voicing
+   */
   function voice(sampleName, when, duration, rate, vol, ch, voicing) {
     const src = ctx.createBufferSource();
-    src.buffer = buffers[sampleName];
+    src.buffer = buffers[sampleName] ?? null;
     src.playbackRate.value = rate;
     const s = samples[sampleName];
     if (s.loop) {
@@ -280,6 +376,7 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
   }
 
   // Schedule every note of one phrase, starting at time t0. Returns the phrase's length in seconds.
+  /** @param {Phrase} phrase @param {number} t0 */
   function schedule(phrase, t0) {
     const { events, length } = phraseEvents(phrase, t0, samples);
     for (const e of events) voice(e.sample, e.when, e.duration, e.rate, e.vol, e.ch, e.voicing);
@@ -294,6 +391,7 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
     }
   }
 
+  /** @param {number} value */
   function setBus(value, seconds = 0.15) {
     const t = ctx.currentTime;
     bus.gain.cancelScheduledValues?.(t);
@@ -321,13 +419,16 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
       pump();
     },
     // Ask for a stage; it begins at the next phrase boundary.
+    /** @param {number} n */
     setStage(n) { seq.setStage(n); },
+    /** @param {number} v  music level while ducked, 0..1 */
     setDuck(v) { duck = v; if (running) setBus(baseGain * duck, 0.25); },
     stop(seconds = 0.6) {
       if (!running) return;
       running = false;
       setBus(0, seconds);
-      clearInterval(timer); timer = null;
+      if (timer) clearInterval(timer);
+      timer = null;
       setTimeout(() => cutAll(0.02), seconds * 1000 + 30);
     },
     pump,   // exposed for tests
