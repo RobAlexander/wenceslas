@@ -68,6 +68,7 @@ export const NIGHTS = 12;
 export const WOLVES_FROM = 3; // first night with wolves
 
 // Per-night difficulty. n runs from 1 to 12.
+/** @param {number} n */
 export function nightParams(n) {
   return {
     foodTarget: 2 + n,                          // 3 .. 14
@@ -85,6 +86,7 @@ export function nightParams(n) {
   };
 }
 
+/** @param {number} foodTarget */
 export function parTime(foodTarget) {
   return CFG.parBase + CFG.parPerFood * foodTarget;
 }

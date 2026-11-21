@@ -15,20 +15,48 @@ const LH = 9;              // line height
 const MAX_INPUT = 70;
 const BOX_H = SHOWN * LH + 32;
 
-export function createConsole({ input, commands }) {
-  const c = { open: false, line: '', log: [], history: [], hist: -1 };
+/**
+ * @typedef {object} Command
+ * @property {string} help
+ * @property {string} [args]     shown by HELP, e.g. 'N (HARD)'
+ * @property {boolean} [close]   close the console after it runs
+ * @property {(args: string[]) => string | string[] | void} run
+ */
 
-  c.print = (...lines) => {
+/**
+ * @typedef {object} DevConsole
+ * @property {boolean} open
+ * @property {string} line       what is being typed
+ * @property {string[]} log
+ * @property {string[]} history  earlier commands, newest first
+ * @property {number} hist       position in history while recalling, or -1
+ * @property {(...lines: (string | string[])[]) => void} print
+ * @property {(on?: boolean) => void} toggle
+ * @property {(text: string) => void} run
+ * @property {(ctx: CanvasRenderingContext2D, t: number) => void} draw
+ */
+
+/**
+ * @param {{ input: { block(on: boolean): void }, commands: Record<string, Command> }} opts
+ * @returns {DevConsole}
+ */
+export function createConsole({ input, commands }) {
+  /** @type {DevConsole} */
+  const c = { open: false, line: '', log: [], history: [], hist: -1, print, toggle, run, draw };
+
+  /** @type {DevConsole['print']} */
+  function print(...lines) {
     for (const l of lines.flat()) c.log.push(String(l));
     if (c.log.length > 200) c.log.splice(0, c.log.length - 200);
-  };
+  }
 
-  c.toggle = (on = !c.open) => {
+  /** @type {DevConsole['toggle']} */
+  function toggle(on = !c.open) {
     c.open = on;
     c.line = '';
     c.hist = -1;
     input.block(on);
-  };
+  }
 
   commands.help = {
     help: 'LIST THE COMMANDS',
@@ -36,7 +64,8 @@ export function createConsole({ input, commands }) {
   };
   commands.clear = { help: 'CLEAR THIS LOG', run: () => { c.log.length = 0; } };
 
-  c.run = (text) => {
+  /** @type {DevConsole['run']} */
+  function run(text) {
     const [name, ...args] = text.trim().toLowerCase().split(/\s+/);
     if (!name) return;
     c.print('> ' + text.trim());
@@ -49,9 +78,9 @@ export function createConsole({ input, commands }) {
       if (out) c.print(out);
       if (cmd.close) c.toggle(false);
     } catch (e) {
-      c.print('ERROR: ' + e.message);
+      c.print('ERROR: ' + (e instanceof Error ? e.message : String(e)));
     }
-  };
+  }
 
   addEventListener('keydown', (e) => {
     if (e.code === 'Backquote') {
@@ -75,7 +104,8 @@ export function createConsole({ input, commands }) {
     if (handled) e.preventDefault?.();
   });
 
-  c.draw = (ctx, t) => {
+  /** @type {DevConsole['draw']} */
+  function draw(ctx, t) {
     if (!c.open) return;
     ctx.fillStyle = 'rgba(26,28,44,0.9)';
     ctx.fillRect(0, 0, W, BOX_H);
@@ -89,7 +119,7 @@ export function createConsole({ input, commands }) {
     });
     const cursor = Math.floor(t * 2.5) % 2 ? '' : '_';
     drawText(ctx, '> ' + c.line + cursor, 6, BOX_H - 12, PAL.y, { shadow: false });
-  };
+  }
 
   return c;
 }

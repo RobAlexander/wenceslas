@@ -5,7 +5,8 @@
     "serve": "python3 -m http.server ${PORT:-8000}",
     "smoke": "node tests/smoke.mjs",
     "screens": "node tests/screens.mjs screens-out",
-    "test": "node tests/highscores.mjs && node tests/wolves.mjs && node tests/gamepad.mjs && node tests/music.mjs && node tests/audio.mjs && node tests/sfx.mjs && node tests/boot.mjs && node tests/screens.mjs screens-out && node tests/smoke.mjs",
+    "typecheck": "node tools/typecheck.mjs",
+    "test": "node tools/typecheck.mjs && node tests/highscores.mjs && node tests/wolves.mjs && node tests/gamepad.mjs && node tests/music.mjs && node tests/audio.mjs && node tests/sfx.mjs && node tests/boot.mjs && node tests/screens.mjs screens-out && node tests/smoke.mjs",
     "sounds": "python3 tools/build_sounds.py",
     "music": "node tools/render_music.mjs music-out"
   },
@@ -15,7 +16,8 @@
   "description": "",
   "devDependencies": {
     "canvas": "^3.2.3",
-    "playwright": "^1.65.1"
+    "playwright": "^1.65.1",
+    "typescript": "^7.0.2"
   },
   "type": "module",
   "private": true

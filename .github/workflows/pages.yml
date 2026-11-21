@@ -26,6 +26,13 @@ jobs:
         with:
           node-version: 26
 
+      # TypeScript checks the plain .js files (nothing is compiled). --ignore-scripts skips
+      # building the native canvas library, which only the local browser-flow tests need.
+      - name: Type-check the game
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+
       # The tests that need nothing installed. The browser-flow tests need a native canvas
       # library, so those are run locally with `npm test`.
       - name: Check the game logic, audio and sound files

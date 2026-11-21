@@ -224,7 +224,8 @@ const RULES = [
   '4. GUARD YOUR PAGES WITH YOUR SWORD. FINISH QUICKLY FOR A TIME BONUS.',
 ];
 
-// The sprite key: [sprite, name, colour, description]. Drawn in two columns.
+// The sprite key: [sprites, name, colour, description]. Drawn in two columns.
+/** @returns {Array<[HTMLCanvasElement[], string, string, string]>} */
 const legend = (spr) => [
   [[spr.king.frames[0].normal], 'WENCESLAS', PAL.y,
     "THAT'S YOU. " + CFG.kingMaxHp + ' HEALTH: IF IT RUNS OUT, THE GAME IS OVER.'],

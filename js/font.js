@@ -33,11 +33,22 @@ const G = {
   ' ': ['...', '...', '...', '...', '...'],
 };
 
+/** @param {string} str */
 export function textWidth(str, scale = 1) {
   return str.length ? (str.length * 4 - 1) * scale : 0;
 }
 
-// align: 'left' | 'center' | 'right'
+/**
+ * @typedef {{ scale?: number, align?: 'left' | 'center' | 'right', shadow?: boolean, shadowColor?: string }} TextOpts
+ */
+
+/**
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {string | number} str
+ * @param {number} x
+ * @param {number} y
+ * @param {TextOpts} [opts]
+ */
 export function drawText(ctx, str, x, y, color = '#f4f4f4', opts = {}) {
   const scale = opts.scale || 1;
   const align = opts.align || 'left';
@@ -53,10 +64,11 @@ export function drawText(ctx, str, x, y, color = '#f4f4f4', opts = {}) {
   plot(ctx, str, sx, sy, color, scale);
 }
 
+/** @param {CanvasRenderingContext2D} ctx @param {string} str @param {number} x @param {number} y @param {string} color @param {number} s */
 function plot(ctx, str, x, y, color, s) {
   ctx.fillStyle = color;
   for (let i = 0; i < str.length; i++) {
-    const g = G[str[i]] || G['?'];
+    const g = G[/** @type {keyof typeof G} */ (str[i])] || G['?'];
     for (let r = 0; r < 5; r++) {
       const row = g[r];
       for (let c = 0; c < 3; c++) if (row[c] === '#') ctx.fillRect(x + (i * 4 + c) * s, y + r * s, s, s);

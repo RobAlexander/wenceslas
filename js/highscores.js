@@ -8,6 +8,10 @@ const HARD_KEY = 'wenceslas.hardUnlocked';
 const INITIALS_KEY = 'wenceslas.initials';
 export const MAX_SCORES = 10;
 
+/** @typedef {{ initials: string, score: number, night: number, hard: boolean }} ScoreEntry */
+/** @typedef {Pick<Storage, 'getItem' | 'setItem'>} StorageLike */
+
+/** @param {any} e  anything, possibly corrupt, read back from storage @returns {ScoreEntry | null} */
 function cleanEntry(e) {
   if (!e || typeof e !== 'object') return null;
   const initials = String(e.initials ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
@@ -17,16 +21,26 @@ function cleanEntry(e) {
   return { initials, score: Math.floor(score), night, hard: !!e.hard };
 }
 
+/** @param {() => StorageLike | null | undefined} [getStorage] */
 export function makeStore(getStorage = () => globalThis.localStorage) {
+  /** @param {string} key */
   const read = (key) => {
-    try { return getStorage().getItem(key); } catch { return null; }
+    try { return getStorage()?.getItem(key) ?? null; } catch { return null; }
   };
+  /** @param {string} key @param {string} value */
   const write = (key, value) => {
-    try { getStorage().setItem(key, value); return true; } catch { return false; }
+    try {
+      const s = getStorage();
+      if (!s) return false;
+      s.setItem(key, value);
+      return true;
+    } catch { return false; }
   };
 
+  /** @type {ScoreEntry[]} */
   let mem = [];
   let memHard = false;
+  /** @type {string | null} */
   let memInitials = null;
 
   function load() {
@@ -35,13 +49,14 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          mem = parsed.map(cleanEntry).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, MAX_SCORES);
+          mem = parsed.map(cleanEntry).filter((e) => e !== null).sort((a, b) => b.score - a.score).slice(0, MAX_SCORES);
         }
       } catch { /* corrupt data: keep what we have in memory */ }
     }
     return mem.map((e) => ({ ...e }));
   }
 
+  /** @param {number} score */
   function qualifies(score) {
     if (!(score > 0)) return false;
     const list = load();
@@ -49,6 +64,7 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
   }
 
   // Returns the new entry's rank (1-based), or 0 if it didn't make the table.
+  /** @param {ScoreEntry} entry */
   function insert(entry) {
     const e = cleanEntry(entry);
     if (!e) return 0;
@@ -72,6 +88,7 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
       const v = read(INITIALS_KEY) || memInitials;
       return v && /^[A-Z]{3}$/.test(v) ? v : 'AAA';
     },
+    /** @param {string} v */
     setInitials(v) { memInitials = v; write(INITIALS_KEY, v); },
   };
 }

@@ -18,7 +18,7 @@ import { createConsole } from './devconsole.js';
 // copied to the visible canvas, enlarged by a whole number so pixels stay square.
 // The browser then shrinks that slightly to fill the window ("sharp bilinear"
 // scaling), which looks crisp at any window size and is exact at whole-number fits.
-const canvas = document.getElementById('game');
+const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('game'));
 const screenCtx = canvas.getContext('2d');
 const buffer = document.createElement('canvas');
 buffer.width = W;
@@ -100,7 +100,7 @@ const game = {
   cheated: false, // dev console used during this run: it can't go on the high score table
   events: [], // drained each frame; sound will hook in here
 };
-window.__wenceslas = game; // handy for debugging and automated tests
+/** @type {any} */ (window).__wenceslas = game; // handy for debugging and automated tests
 game.input = input;
 
 // Sound starts at the first key press or click: browsers don't allow it before that.
