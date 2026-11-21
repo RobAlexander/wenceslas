@@ -52,6 +52,19 @@ export const CFG = {
   wolfRecover: 0.45,        // pause after a leap that misses
   wolfBite: 1,              // damage to the page it steals from
 
+  // Archers: they keep their distance and shoot at Wenceslas only
+  archerSpeed: 40,          // walking up to shooting range
+  archerRetreatSpeed: 34,   // backing away when he gets close: slow enough to be run down (the king does 85)
+  archerRange: 150,         // walks toward him until this close, then shoots
+  archerKeepAway: 70,       // backs away when he is closer than this
+  archerDraw: 0.8,          // bow drawn (telegraphed, and the archer is rooted) before each shot
+  archerCooldown: 2.2,      // between one shot and starting the next draw
+  archerSpread: 0.22,       // radians of random error either side of the aim: about +-33 px at 150 px
+  arrowSpeed: 190,
+  arrowLife: 2.5,           // seconds in the air at most
+  arrowDamage: 1,
+  arrowTreeBlock: 2,        // pixels beyond a tree's radius at which it stops an arrow
+
   // Hard mode
   hardSpeedMul: 1.35,
 
@@ -73,6 +86,7 @@ export const NIGHT_OFFSET = 2;
 
 const WOLVES_FROM_LEVEL = 3;
 export const WOLVES_FROM = Math.max(1, WOLVES_FROM_LEVEL - NIGHT_OFFSET); // first night with wolves
+export const ARCHERS_FROM = 3; // first night with archers (a night number, not a table level)
 
 // Per-night difficulty. n is the night, 1 to NIGHTS; the table runs on level = n + NIGHT_OFFSET.
 /** @param {number} n */
@@ -91,6 +105,10 @@ export function nightParams(n) {
     maxWolves: lv < WOLVES_FROM_LEVEL ? 0 : Math.min(1 + Math.floor((lv - WOLVES_FROM_LEVEL) / 3), 4), // 1 .. 4
     wolfInterval: Math.max(6, 16 - lv),
     firstWolf: Math.max(8, 20 - lv),
+    // Archers count by the night itself, since they were asked for "from night 3".
+    maxArchers: n < ARCHERS_FROM ? 0 : Math.min(1 + Math.floor((n - ARCHERS_FROM) / 3), 3), // 1 .. 3
+    archerInterval: Math.max(8, 18 - n),
+    firstArcher: Math.max(9, 22 - n),
   };
 }
 

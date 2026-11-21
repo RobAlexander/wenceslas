@@ -56,6 +56,20 @@ const ROBBER = [
   '.PPPPPPP.',
 ];
 
+// A hooded archer: brown hood and cloak with an orange quiver strap, and a green feather.
+const ARCHER = [
+  '...mmm.l.',
+  '..mmmmm..',
+  '..msssm..',
+  '..mkskm..',
+  '..msssm..',
+  '..bbbbb..',
+  '.bbbobbb.',
+  'sbbbobbbs',
+  '.bbbobbb.',
+  '.bbbbbbb.',
+];
+
 const OLD_MAN = [
   '.........',
   '...bbb...',
@@ -202,6 +216,7 @@ export function loadSprites() {
     king: character(KING),
     page: character(PAGE),
     robber: character(ROBBER),
+    archer: character(ARCHER),
     wolf: character(WOLF_BODY, WOLF_LEGS),
     oldMan: single(OLD_MAN),
     partridge: single(PARTRIDGE),

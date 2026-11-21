@@ -1,6 +1,6 @@
 // Entry point: canvas setup, main loop and the flow between screens and nights.
 
-import { W, H, CFG, NIGHTS, WOLVES_FROM, parTime } from './config.js';
+import { W, H, CFG, NIGHTS, WOLVES_FROM, ARCHERS_FROM, parTime } from './config.js';
 import { makeRng } from './rng.js';
 import { loadSprites, PAL } from './sprites.js';
 import { World } from './world.js';
@@ -35,7 +35,7 @@ import { context2d, makeCanvas } from './canvas.js';
  * @property {number} stateT       time in the current state
  * @property {number} banner       time left on the start-of-night banner
  * @property {boolean} god         dev console: Wenceslas takes no damage
- * @property {boolean} cheated     dev console used during this run: it can't go on the high score table
+ * @property {boolean} cheated     dev console used during this run: shows "DEV" in the corner (it can still score)
  * @property {string[]} events     drained each frame, for sound
  * @property {ReturnType<typeof createInput>} input
  * @property {ReturnType<typeof createAudio>} audio
@@ -68,7 +68,7 @@ function resize() {
 addEventListener('resize', resize); // also fires on browser zoom and when moving between monitors
 resize();
 
-// F toggles fullscreen (not while typing initials). Ignored if the browser refuses.
+// F toggles fullscreen (not while typing a high score name). Ignored if the browser refuses.
 function toggleFullscreen() {
   try {
     if (document.fullscreenElement) document.exitFullscreen();
@@ -89,7 +89,7 @@ function enterFullscreen() {
 const portraitTouch = () => innerHeight > innerWidth && !!globalThis.matchMedia?.('(pointer: coarse)').matches;
 
 addEventListener('keydown', (e) => {
-  const plain = !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'initials' && !input.st.blocked;
+  const plain = !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'nameEntry' && !input.st.blocked;
   if (e.code === 'KeyF' && plain) toggleFullscreen();
   if (e.code === 'KeyM' && plain) audio.toggleMute();
 });
@@ -97,7 +97,7 @@ addEventListener('keydown', (e) => {
 // Test hooks, all optional and ignored in normal play:
 //   ?seed=123      repeatable layouts
 //   ?night=5       start straight into that night
-//   ?screen=NAME   show one screen: title, howto, paused, nightEnd, gameover, ending, initials, highscores
+//   ?screen=NAME   show one screen: title, howto, paused, nightEnd, gameover, ending, nameEntry, highscores
 //   ?debug         show the seed
 const params = new URLSearchParams(location.search);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : (Math.random() * 2 ** 32) >>> 0;
@@ -205,10 +205,10 @@ const actions = {
     game.kingHp = Math.min(CFG.kingMaxHp, k.hp + Math.ceil(CFG.kingMaxHp * CFG.hpRestoreBetweenNights));
     startNight(game.night + 1);
   },
-  // After a run ends (game over or the ending): initials if it made the table.
+  // After a run ends (game over or the ending): name entry if it made the table.
   /** @param {RunResult} run */
   finishRun(run) {
-    if (scores.qualifies(run.score) && !game.cheated) setState('initials', run);
+    if (scores.qualifies(run.score)) setState('nameEntry', run);
     else setState('highscores', { highlight: 0 });
   },
 };
@@ -233,7 +233,8 @@ const inPlay = () => {
 };
 /** @type {Record<string, (w: World) => void>} */
 const SPAWN = {
-  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
+  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(),
+  page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
 };
 const devConsole = createConsole({
   input,
@@ -256,7 +257,7 @@ const devConsole = createConsole({
       },
     },
     spawn: {
-      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, PAGE OR FOOD',
+      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, PAGE OR FOOD',
       run: ([kind, count = '1']) => {
         if (!SPAWN[kind]) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
         const w = inPlay(), n = int(count, 1, 20, 'COUNT');
@@ -265,10 +266,10 @@ const devConsole = createConsole({
       },
     },
     kill: {
-      help: 'REMOVE EVERY ROBBER AND WOLF (NO POINTS)',
+      help: 'REMOVE EVERY ENEMY AND ARROW (NO POINTS)',
       run: () => {
-        const w = inPlay(), n = w.robbers.length + w.wolves.length;
-        w.robbers.length = 0; w.wolves.length = 0;
+        const w = inPlay(), n = w.foes().length;
+        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.arrows.length = 0;
         return 'REMOVED ' + n;
       },
     },
@@ -379,6 +380,7 @@ function draw() {
       'DELIVER ' + w.p.foodTarget + ' FOOD TO THE OLD MAN',
     ];
     if (game.night === WOLVES_FROM) lines.push(['BEWARE: WOLVES STEAL FOOD!', PAL.o]);
+    if (game.night === ARCHERS_FROM) lines.push(['BEWARE: ARCHERS SHOOT AT YOU!', PAL.o]);
     drawPanel(ctx, lines);
   }
   if (s) s.draw(ctx);
@@ -431,7 +433,7 @@ const demo = {
   howto: () => setState('howto'),
   paused: () => setState('paused'),
   highscores: () => setState('highscores', { highlight: 0 }),
-  initials: () => setState('initials', { score: 4200, night: 7, hard: false }),
+  nameEntry: () => setState('nameEntry', { score: 4200, night: 7, hard: false }),
   ending: () => setState('ending', { score: 15800, night: 12, hard: false }),
   gameover: () => setState('gameover', { score: 3200, night: 5, hard: false }),
   nightEnd: () => setState('nightEnd', {

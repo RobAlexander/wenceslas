@@ -13,7 +13,7 @@ Opening `index.html` straight from disk won't work, because ES modules need a we
 
 Optional URL parameters for testing, ignored in normal play:
 `?seed=123` (repeatable layouts), `?night=5` (skip the title and start on that night),
-`?screen=NAME` (show one screen: `title`, `howto`, `paused`, `nightEnd`, `gameover`, `ending`, `initials`, `highscores`), `?debug` (shows the seed).
+`?screen=NAME` (show one screen: `title`, `howto`, `paused`, `nightEnd`, `gameover`, `ending`, `nameEntry`, `highscores`), `?debug` (shows the seed).
 
 ## Controls
 
@@ -22,7 +22,7 @@ Optional URL parameters for testing, ignored in normal play:
 WASD to move, mouse to aim, left-click to swing. Esc or P to pause. F toggles fullscreen, M mutes (and remembers it).
 The game scales to fill the window, keeping 16:9 (with bars if needed).
 In menus: W/S or the arrow keys to move, Enter or Space to choose, or just use the mouse.
-Initials entry: type letters, or use the arrow keys (or click the arrows on screen); Enter to confirm.
+Name entry (up to 8 characters: letters, digits, space, - and .): type, or use the arrow keys (or click the arrows on screen); Enter to confirm. The last name used is offered again, and typing replaces it.
 
 ### Phone or tablet (landscape)
 Twin-stick touch controls, shown only once the screen has been touched:
@@ -51,15 +51,15 @@ while it's open. Type a command and press Enter. Up and Down recall earlier comm
 |---|---|
 | `night N` / `night N hard` | Start a run on night N (1 to 12) |
 | `win` | Finish the current night |
-| `spawn robber\|wolf\|page\|food [count]` | Add things to the current night |
-| `kill` | Remove every robber and wolf, with no points |
+| `spawn robber\|wolf\|archer\|page\|food [count]` | Add things to the current night |
+| `kill` | Remove every enemy and arrow, with no points |
 | `hp N` | Set Wenceslas's health |
 | `god` | Toggle: Wenceslas takes no damage |
 | `screen NAME` | Show a screen, like `?screen=` |
 | `seed` | Show the random seed |
 | `help`, `clear` | List the commands, clear the log |
 
-A run that uses any command that changes the game is marked **DEV** in the corner and can't go on the high score table.
+A run that uses any command that changes the game is marked **DEV** in the corner, and can still enter the high score table.
 Commands are defined in `js/main.js`, and the console itself is `js/devconsole.js`.
 
 ## Sound and music
@@ -87,7 +87,8 @@ Sound starts at the first key press or click, because browsers don't allow it so
   Every file in `js/` must pass, including new ones.
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
-- `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, initials, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
+- `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
+- `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, name entry, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
 - `tests/gamepad.mjs`: unit tests for the gamepad module with a fake pad (deadzones, press-only swings, menu repeat).
 - `tests/screens.mjs`: renders every menu screen to PNG in `screens-out/` (`npm run screens`) and checks their key handling.
 - `npm run smoke`: headless simulation of 24 nights with a simple bot, to catch runtime errors in the logic and drawing code.
@@ -112,7 +113,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - The sword doesn't hurt pages.
 - Hard mode resets the score and doubles all points.
 - Picking up food: Wenceslas or any page in the line can touch it, and it goes to the first empty-handed page.
-- High scores: top 10, easy and hard runs share one table (hard runs are marked), stored in localStorage. Initials are remembered for next time. A run that ends in defeat counts the points earned in the unfinished night.
+- High scores: top 10, easy and hard runs share one table (hard runs are marked), stored in localStorage. Names are up to 8 characters and the last one is remembered for next time (older 3-letter entries still load). A run that ends in defeat counts the points earned in the unfinished night, and the GAME OVER screen says NEW HIGH SCORE! when that score makes the table, before moving on to name entry. A score of 0 never makes the table.
 - Touch: the joystick floats, and a tap's auto-aim reaches 90 pixels (`autoAimRange` in `js/config.js`); beyond that the king swings the way he's facing.
 - Hard mode is unlocked, and stays unlocked, once night 12 has been cleared.
 - Quitting from the pause menu doesn't record a score.
@@ -124,6 +125,14 @@ Sound starts at the first key press or click, because browsers don't allow it so
   same points as a robber, and the end-of-night breakdown counts robbers and wolves together as "enemies".
   A stolen item makes the food-dropped sound; there's no wolf sound of its own yet. Wolf numbers and speeds are in
   `js/config.js`.
+- Archers appear from night 3: one at a time on nights 3 to 5, two on 6 to 8, three from 9, on top of the robbers. An archer
+  looks only at Wenceslas. It walks to within 150 pixels, then plants its feet and draws its bow for 0.8 s (a red "!" shows
+  it's about to shoot) and looses one arrow at where he is at that moment, with up to about 33 pixels of random error at that
+  range, so a standing king is hit roughly one time in five and a moving one rarely. An arrow hits the first of Wenceslas
+  or a page that it reaches, for 1 damage. Trees stop arrows; rocks and walls don't (they're low). Closer than 70 pixels,
+  an archer backs away between shots, but at 34 pixels a second to Wenceslas's 85, so he can run one down; one hit kills
+  it. Arrows reuse the sword-swing and hit sounds (there's no archer sound of its own yet). Its numbers are in
+  `js/config.js` (`archer*` and `arrow*`).
 
 ## Licence
 

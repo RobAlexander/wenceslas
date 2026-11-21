@@ -1,5 +1,5 @@
 // Menu and overlay screens: title, how to play, pause, end of night, game over,
-// ending, initials entry and the high score table.
+// ending, high score name entry and the high score table.
 //
 // Each screen is an object (see the Screen type below) with:
 //   overlay          true if the frozen/running game is drawn underneath it
@@ -10,11 +10,12 @@
 // env (provided by main.js) is a ScreenEnv. Sound hooks: screens push 'menuMove'
 // and 'menuSelect' into env.events.
 
-import { W, H, CFG, NIGHTS, WOLVES_FROM } from './config.js';
+import { W, H, CFG, NIGHTS } from './config.js';
 import { PAL } from './sprites.js';
 import { drawText, textWidth } from './font.js';
 import { drawSnow } from './render.js';
 import { makeCanvas } from './canvas.js';
+import { MAX_NAME, NAME_CHARS, cleanName } from './highscores.js';
 
 /** @typedef {{ x: number, y: number }} Point */
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect */
@@ -53,7 +54,7 @@ import { makeCanvas } from './canvas.js';
  * @property {NightEndData} nightEnd
  * @property {RunResult} gameover
  * @property {RunResult} ending
- * @property {RunResult} initials
+ * @property {RunResult} nameEntry
  * @property {HighScoresData | void} highscores
  */
 /** @typedef {keyof ScreenData} ScreenName */
@@ -367,8 +368,10 @@ const legend = (spr) => [
     'FOLLOW THE YELLOW ARROW, AND STEP INSIDE HIS RING TO HAND OVER THE FOOD.'],
   [[spr.robber.frames[0].normal], 'ROBBER', PAL.o,
     'GOES FOR YOUR PAGES, OR FOR YOU IF YOU GET CLOSE. A RED ! MEANS A BLOW IS COMING.'],
+  [[spr.archer.frames[0].normal], 'ARCHER', PAL.o,
+    'KEEPS ITS DISTANCE AND SHOOTS ONLY AT YOU, BADLY. ARROWS CAN HIT PAGES, BUT TREES STOP THEM. IT IS SLOW: RUN IT DOWN.'],
   [[spr.wolf.frames[0].normal], 'WOLF', PAL.n,
-    (WOLVES_FROM > 1 ? 'FROM NIGHT ' + WOLVES_FROM + '. ' : '') + 'LEAPS AT A PAGE WITH FOOD, BITES IT AND RUNS OFF WITH THE FOOD. KILL IT TO GET THE FOOD BACK.'],
+    'LEAPS AT A PAGE WITH FOOD, BITES IT AND RUNS OFF WITH THE FOOD. KILL IT TO GET THE FOOD BACK.'],
   [[spr.trees[0].img, spr.rock.img], 'TREES, ROCKS, WALLS', PAL.n,
     'THEY BLOCK THE WAY, FOR YOU AND YOUR ENEMIES ALIKE.'],
 ];
@@ -517,13 +520,15 @@ function nightEndScreen(env) {
 /** @type {RunResult} shown only if a screen is drawn before it's entered */
 const NO_RUN = { score: 0, night: 1, hard: false };
 
-/** @param {ScreenEnv} env @returns {Screen<RunResult>} */
+// A death with a score that makes the table says so, and then leads on to name entry.
+/** @param {ScreenEnv} env @returns {Screen<RunResult> & { invited(): boolean }} */
 function gameOverScreen(env) {
   let t = 0;
   let data = NO_RUN;
+  let invited = false;   // this score makes the high score table
 
   /** @param {RunResult} d */
-  function enter(d) { data = d; t = 0; }
+  function enter(d) { data = d; t = 0; invited = env.scores.qualifies(d.score); }
 
   /** @param {number} dt */
   function update(dt) {
@@ -537,11 +542,15 @@ function gameOverScreen(env) {
     box(ctx, W / 2 - 130, 96, 260, 150);
     bigText(ctx, 'GAME OVER', 112, PAL.r, 4, PAL.k);
     drawText(ctx, 'YOU REACHED NIGHT ' + data.night, W / 2, 158, PAL.w, { scale: 2, align: 'center' });
-    drawText(ctx, 'SCORE ' + data.score, W / 2, 182, PAL.y, { scale: 2, align: 'center' });
-    if (t > 1 && blink(t, 2)) drawText(ctx, say(env, 'PRESS ENTER OR CLICK', 'TAP TO CONTINUE'), W / 2, 222, PAL.n, { align: 'center' });
+    drawText(ctx, 'SCORE ' + data.score, W / 2, 180, PAL.y, { scale: 2, align: 'center' });
+    if (invited) drawText(ctx, 'NEW HIGH SCORE!', W / 2, 200, blink(t, 3) ? PAL.l : PAL.y, { scale: 2, align: 'center' });
+    if (t > 1 && blink(t, 2)) {
+      const msg = invited ? say(env, 'PRESS ENTER TO ENTER YOUR NAME', 'TAP TO ENTER YOUR NAME') : say(env, 'PRESS ENTER OR CLICK', 'TAP TO CONTINUE');
+      drawText(ctx, msg, W / 2, 226, PAL.n, { align: 'center' });
+    }
   }
 
-  return { overlay: true, enter, update, draw };
+  return { overlay: true, enter, update, draw, invited: () => invited };
 }
 
 // ---------- ending ----------
@@ -636,13 +645,24 @@ function endingScreen(env) {
   return { overlay: false, enter, update, draw };
 }
 
-// ---------- initials entry ----------
+// ---------- high score name entry ----------
 
-/** @param {ScreenEnv} env @returns {Screen<RunResult> & { letters: number[] }} */
-function initialsScreen(env) {
+// A name of up to MAX_NAME characters. Each slot holds one of NAME_CHARS (a space is an empty slot),
+// changed by typing or with the up and down arrows, so touch and gamepad can use it too.
+// The name from last time is offered; typing the first character replaces all of it.
+
+/** @param {string} code a key code @returns {string | null} the character that key types, if any */
+function charForKey(code) {
+  const m = /^(?:Key([A-Z])|Digit(\d)|Numpad(\d))$/.exec(code);
+  if (m) return m[1] ?? m[2] ?? m[3];
+  return code === 'Space' ? ' ' : code === 'Minus' || code === 'NumpadSubtract' ? '-' : code === 'Period' || code === 'NumpadDecimal' ? '.' : null;
+}
+
+/** @param {ScreenEnv} env @returns {Screen<RunResult> & { name(): string }} */
+function nameEntryScreen(env) {
   const SLOT_Y = 168, SLOT_DX = 40;
   /** @param {number} i */
-  const slotX = (i) => W / 2 + (i - 1) * SLOT_DX;
+  const slotX = (i) => W / 2 + (i - (MAX_NAME - 1) / 2) * SLOT_DX;
   /** @param {number} i @returns {Rect} */
   const upRect = (i) => ({ x: slotX(i) - 14, y: SLOT_Y - 34, w: 28, h: 22 });
   /** @param {number} i @returns {Rect} */
@@ -653,19 +673,46 @@ function initialsScreen(env) {
 
   let t = 0;
   let data = NO_RUN;
-  let pos = 0;   // which letter is being edited
+  let pos = 0;        // the slot being edited
+  let fresh = true;   // nothing has been edited yet: the first typed character starts a new name
+  /** @type {number[]} each slot's character, as an index into NAME_CHARS (0 is a space) */
+  let slots = new Array(MAX_NAME).fill(0);
 
-  // letters (0 = A .. 25 = Z) is on the screen object, so tests can read it.
-  /** @type {Screen<RunResult> & { letters: number[] }} */
-  const s = { overlay: false, letters: [0, 0, 0], enter, update, draw };
+  // The name so far, as it would be saved ('' if every slot is empty).
+  function name() { return cleanName(slots.map((i) => NAME_CHARS[i]).join('')); }
 
   /** @param {number} i @param {number} d */
-  function bump(i, d) { s.letters[i] = (s.letters[i] + d + 26) % 26; env.events.push('menuMove'); }
+  function bump(i, d) {
+    fresh = false;
+    slots[i] = (slots[i] + d + NAME_CHARS.length) % NAME_CHARS.length;
+    env.events.push('menuMove');
+  }
+
+  /** @param {string} ch */
+  function type(ch) {
+    if (fresh) slots.fill(0);
+    fresh = false;
+    slots[pos] = NAME_CHARS.indexOf(ch);
+    pos = Math.min(MAX_NAME - 1, pos + 1);
+    env.events.push('menuMove');
+  }
+
+  function backspace() {
+    if (fresh) slots.fill(0);                         // wipe the offered name
+    else {
+      if (pos > 0 && slots[pos] === 0) pos--;
+      slots[pos] = 0;
+    }
+    if (fresh) pos = 0;
+    fresh = false;
+    env.events.push('menuMove');
+  }
 
   function confirm() {
-    const initials = s.letters.map((n) => String.fromCharCode(65 + n)).join('');
-    env.scores.setInitials(initials);
-    const rank = env.scores.insert({ initials, score: data.score, night: data.night, hard: data.hard });
+    const n = name();
+    if (!n) return;                                   // there has to be a name
+    env.scores.setName(n);
+    const rank = env.scores.insert({ name: n, score: data.score, night: data.night, hard: data.hard });
     env.events.push('menuSelect');
     env.go('highscores', { highlight: rank });
   }
@@ -675,31 +722,30 @@ function initialsScreen(env) {
     data = d;
     t = 0;
     pos = 0;
-    s.letters = [...env.scores.lastInitials()].map((c) => c.charCodeAt(0) - 65);
+    fresh = true;
+    slots = [...env.scores.lastName().padEnd(MAX_NAME, ' ')].map((c) => Math.max(0, NAME_CHARS.indexOf(c)));
   }
 
   /** @param {number} dt */
   function update(dt) {
     t += dt;
     for (const k of env.input.takeKeys()) {
+      const ch = charForKey(k);
       if (k === 'ArrowUp') bump(pos, 1);
       else if (k === 'ArrowDown') bump(pos, -1);
-      else if (k === 'ArrowLeft' || k === 'Backspace') { pos = Math.max(0, pos - 1); env.events.push('menuMove'); }
-      else if (k === 'ArrowRight') { pos = Math.min(2, pos + 1); env.events.push('menuMove'); }
+      else if (k === 'ArrowLeft') { fresh = false; pos = Math.max(0, pos - 1); env.events.push('menuMove'); }
+      else if (k === 'ArrowRight') { fresh = false; pos = Math.min(MAX_NAME - 1, pos + 1); env.events.push('menuMove'); }
+      else if (k === 'Backspace') backspace();
       else if (k === 'Enter') { confirm(); return; }
-      else if (/^Key[A-Z]$/.test(k)) {
-        s.letters[pos] = k.charCodeAt(3) - 65;
-        pos = Math.min(2, pos + 1);
-        env.events.push('menuMove');
-      }
+      else if (ch !== null) type(ch);
     }
     const c = env.input.takeClick();
     if (!c) return;
     if (hit(okRect, c)) { confirm(); return; }
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < MAX_NAME; i++) {
       if (hit(upRect(i), c)) { pos = i; bump(i, 1); }
       else if (hit(downRect(i), c)) { pos = i; bump(i, -1); }
-      else if (hit(slotRect(i), c)) { pos = i; env.events.push('menuMove'); }
+      else if (hit(slotRect(i), c)) { fresh = false; pos = i; env.events.push('menuMove'); }
     }
   }
 
@@ -708,25 +754,26 @@ function initialsScreen(env) {
     backdrop(ctx, env);
     bigText(ctx, 'NEW HIGH SCORE!', 34, PAL.y, 4, PAL.r);
     drawText(ctx, 'SCORE ' + data.score, W / 2, 84, PAL.w, { scale: 2, align: 'center' });
-    drawText(ctx, 'ENTER YOUR INITIALS', W / 2, 114, PAL.n, { align: 'center' });
-    for (let i = 0; i < 3; i++) {
+    drawText(ctx, 'ENTER YOUR NAME', W / 2, 114, PAL.n, { align: 'center' });
+    for (let i = 0; i < MAX_NAME; i++) {
       const on = i === pos;
       const x = slotX(i);
       tri(ctx, x, SLOT_Y - 22, 'up', on ? PAL.y : PAL.n);
       tri(ctx, x, SLOT_Y + 40, 'down', on ? PAL.y : PAL.n);
-      drawText(ctx, String.fromCharCode(65 + s.letters[i]), x, SLOT_Y, on ? PAL.y : PAL.w, { scale: 4, align: 'center' });
+      drawText(ctx, NAME_CHARS[slots[i]], x, SLOT_Y, on ? PAL.y : PAL.w, { scale: 4, align: 'center' });
       if (!on || blink(t, 3)) {
         ctx.fillStyle = on ? PAL.y : PAL.n;
         ctx.fillRect(x - 10, SLOT_Y + 26, 20, 2);
       }
     }
-    box(ctx, okRect.x, okRect.y, okRect.w, okRect.h, 'rgba(26,28,44,0.9)', PAL.w);
-    drawText(ctx, 'OK', W / 2, okRect.y + 6, PAL.y, { scale: 2, align: 'center' });
-    drawText(ctx, say(env, 'TYPE LETTERS, OR USE THE ARROW KEYS', 'TAP THE ARROWS TO CHANGE A LETTER'), W / 2, 290, PAL.n, { align: 'center' });
+    const ok = name() !== '';
+    box(ctx, okRect.x, okRect.y, okRect.w, okRect.h, 'rgba(26,28,44,0.9)', ok ? PAL.w : PAL.N);
+    drawText(ctx, 'OK', W / 2, okRect.y + 6, ok ? PAL.y : PAL.N, { scale: 2, align: 'center' });
+    drawText(ctx, say(env, 'TYPE YOUR NAME (UP TO ' + MAX_NAME + ' CHARACTERS), OR USE THE ARROW KEYS', 'TAP THE ARROWS TO CHANGE A LETTER'), W / 2, 290, PAL.n, { align: 'center' });
     drawText(ctx, say(env, 'ENTER TO CONFIRM', 'THEN TAP OK'), W / 2, 302, PAL.n, { align: 'center' });
   }
 
-  return s;
+  return { overlay: false, enter, update, draw, name };
 }
 
 // ---------- high score table ----------
@@ -762,7 +809,7 @@ function highScoresScreen(env) {
       const col = lit ? PAL.w : highlight === i + 1 ? PAL.y : PAL.l;
       drawText(ctx, String(i + 1) + '.', 190, y, e ? PAL.n : PAL.N, { scale: 2, align: 'right' });
       if (!e) { drawText(ctx, '---', 208, y, PAL.N, { scale: 2 }); continue; }
-      drawText(ctx, e.initials, 208, y, col, { scale: 2 });
+      drawText(ctx, e.name, 208, y, col, { scale: 2 });
       drawText(ctx, String(e.score), 400, y, col, { scale: 2, align: 'right' });
       drawText(ctx, 'NIGHT ' + e.night, 420, y + 3, PAL.n);
       if (e.hard) drawText(ctx, 'HARD', 476, y + 3, PAL.o);
@@ -783,7 +830,7 @@ export function createScreens(env) {
     nightEnd: nightEndScreen(env),
     gameover: gameOverScreen(env),
     ending: endingScreen(env),
-    initials: initialsScreen(env),
+    nameEntry: nameEntryScreen(env),
     highscores: highScoresScreen(env),
   };
 }

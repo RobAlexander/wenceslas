@@ -11,7 +11,7 @@ const { makeRng } = await import('../js/rng.js');
 const { makeGround, makeSnow, drawWorld, drawHud } = await import('../js/render.js');
 
 const spr = loadSprites();
-let completed = 0, deaths = 0, kills = 0, recruits = 0, pickups = 0, stolen = 0;
+let completed = 0, deaths = 0, kills = 0, recruits = 0, pickups = 0, stolen = 0, shots = 0;
 for (let seed = 1; seed <= 24; seed++) {
   const rng = makeRng(seed);
   const night = ((seed - 1) % 12) + 1;
@@ -36,10 +36,10 @@ for (let seed = 1; seed <= 24; seed++) {
     w.update(1 / 60, { mx: dx / d, my: dy / d, ax: rob ? rob.x : goal.x, ay: rob ? rob.y - 6 : goal.y, swing });
     if (i % 10 === 0) { drawWorld(ctx, w, spr, ground, snow, i / 60); drawHud(ctx, w, spr, 0); }
     for (const e of events) {
-      if (e === 'kill') kills++; else if (e === 'recruit') recruits++; else if (e === 'pickup') pickups++; else if (e === 'wolfSteal') stolen++;
+      if (e === 'kill') kills++; else if (e === 'recruit') recruits++; else if (e === 'pickup') pickups++; else if (e === 'wolfSteal') stolen++; else if (e === 'arrowShoot') shots++;
     }
     events.length = 0;
-    for (const e of [k, ...w.pages, ...w.foes()]) {
+    for (const e of [k, ...w.pages, ...w.foes(), ...w.arrows]) {
       if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) throw new Error('NaN position, seed ' + seed);
     }
   }
@@ -47,4 +47,4 @@ for (let seed = 1; seed <= 24; seed++) {
   if (w.dead) deaths++;
   console.log(`seed ${seed} night ${night}${seed > 12 ? ' hard' : ''}: ${w.done ? 'done' : w.dead ? 'dead' : 'timeout'} in ${w.time.toFixed(1)}s, delivered ${w.delivered}/${w.p.foodTarget}, kills ${w.kills}, hp ${w.king.hp}`);
 }
-console.log({ completed, deaths, kills, recruits, pickups, stolen });
+console.log({ completed, deaths, kills, recruits, pickups, stolen, shots });

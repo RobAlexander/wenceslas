@@ -115,7 +115,37 @@ import { FOOD_KINDS } from './sprites.js';
  * @property {number} phase      offsets the wobble of its circle
  */
 
-/** @typedef {Robber | Wolf} Foe */
+/** @typedef {'move' | 'draw'} ArcherState  move: walk or stand (also while cooling down); draw: bow drawn, rooted */
+
+/**
+ * @typedef {object} Archer
+ * @property {number} id
+ * @property {'archer'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {ArcherState} state
+ * @property {number} t          time left drawing the bow
+ * @property {number} cd         time left before it may draw again
+ * @property {number} aim        radians, toward Wenceslas while drawing (for the sprite)
+ * @property {number} stun
+ * @property {number} flash
+ * @property {number} kbx
+ * @property {number} kby
+ * @property {number} walkT
+ * @property {number} face
+ * @property {number} side
+ * @property {boolean} entered   has come onto the screen
+ */
+
+/**
+ * An arrow in flight. x, y are on the ground plane; it is drawn raised, at body height.
+ * @typedef {{ id: number, x: number, y: number, vx: number, vy: number, angle: number, life: number }} Arrow
+ */
+
+/** @typedef {Robber | Wolf | Archer} Foe */
 
 /**
  * @typedef {{ kind: 'tree', x: number, y: number, r: number, size: number, variant: number }
@@ -199,6 +229,10 @@ export class World {
     this.robbers = [];
     /** @type {Wolf[]} */
     this.wolves = [];
+    /** @type {Archer[]} */
+    this.archers = [];
+    /** @type {Arrow[]} */
+    this.arrows = [];
     /** @type {Food[]} */
     this.foods = [];
     /** @type {Particle[]} */
@@ -222,6 +256,7 @@ export class World {
     this.foodTimer = 1;
     this.robberTimer = this.p.firstRobber;
     this.wolfTimer = this.p.firstWolf;
+    this.archerTimer = this.p.firstArcher;
     this.deliverTimer = 0;
 
     for (let i = 0; i < 2; i++) this.spawnFood();
@@ -354,22 +389,35 @@ export class World {
     this.emit('wolf');
   }
 
+  spawnArcher() {
+    const pos = this.edgeSpawnAway();
+    this.archers.push({
+      id: nextId++, kind: 'archer', x: pos.x, y: pos.y, r: 4, hp: 1, maxHp: 1,
+      state: 'move', t: 0, cd: this.rng.range(0.5, 1.2), aim: 0,
+      stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1, side: this.rng() < 0.5 ? 1 : -1,
+      entered: false,
+    });
+    this.emit('archer');
+  }
+
   // Every enemy the sword can hit.
   /** @returns {Foe[]} */
-  foes() { return [...this.robbers, ...this.wolves]; }
+  foes() { return [...this.robbers, ...this.wolves, ...this.archers]; }
 
   // ---------- update ----------
 
   /** @param {number} dt @param {GameInput} inp */
   update(dt, inp) {
     this.updateFx(dt);
-    if (this.done || this.dead) return;
+    if (this.done || this.dead) { this.arrows.length = 0; return; }
     this.time += dt;
     this.updateKing(dt, inp);
     this.updateTrail();
     this.updatePages(dt);
     this.updateRobbers(dt);
     this.updateWolves(dt);
+    this.updateArchers(dt);
+    this.updateArrows(dt);
     this.updateFood(dt);
     this.updateDelivery(dt);
     this.updateSpawning(dt);
@@ -440,10 +488,9 @@ export class World {
     }
   }
 
-  // A sword hit on a robber or a wolf. (nx, ny): direction of the blow.
+  // A sword hit on a robber, a wolf or an archer. (nx, ny): direction of the blow.
   /** @param {Foe} foe @param {number} nx @param {number} ny */
   hitFoe(foe, nx, ny) {
-    const wolf = foe.kind === 'wolf';
     foe.hp -= 1;
     foe.flash = 0.12;
     foe.stun = 0.3;
@@ -453,14 +500,22 @@ export class World {
       // knocked out of a crouch or a leap
       foe.z = 0;
       if (foe.state !== 'flee') this.startCircling(foe);
+    } else if (foe.kind === 'archer') {
+      // a hit spoils the shot, and it doesn't go straight back to drawing
+      foe.state = 'move';
+      foe.cd = Math.max(foe.cd, CFG.archerCooldown * 0.5);
     } else foe.windup = 0;
     this.emit('hit');
     if (foe.hp <= 0) {
       if (foe.kind === 'wolf') this.wolves.splice(this.wolves.indexOf(foe), 1);
+      else if (foe.kind === 'archer') this.archers.splice(this.archers.indexOf(foe), 1);
       else this.robbers.splice(this.robbers.indexOf(foe), 1);
       this.kills++;
       this.emit('kill');
-      this.puff(foe.x, foe.y - 6, wolf ? ['#566c86', '#f4f4f4', '#333c57'] : ['#5d275d', '#f4f4f4', '#333c57'], 14);
+      const colors = foe.kind === 'wolf' ? ['#566c86', '#f4f4f4', '#333c57']
+        : foe.kind === 'archer' ? ['#257179', '#38b764', '#f4f4f4']
+        : ['#5d275d', '#f4f4f4', '#333c57'];
+      this.puff(foe.x, foe.y - 6, colors, 14);
       this.floatText(foe.x, foe.y - 16, '+' + CFG.pointsKill * this.pointsMul(), '#f4f4f4');
       if (foe.kind === 'wolf' && foe.food) {
         // a wolf killed while running off drops what it stole
@@ -789,6 +844,114 @@ export class World {
     return { x: best.x, y: best.y };
   }
 
+  // ---------- archers ----------
+  //
+  // An archer looks only at Wenceslas. While cooling down it walks into range, backs away if
+  // he is close (slower than he walks, so he can run it down), or stands. When the cooldown
+  // is up and he is in range it plants its feet and draws its bow (the telegraph), then
+  // looses one inaccurate arrow at where he is at that moment.
+
+  /** @param {number} dt */
+  updateArchers(dt) {
+    const k = this.king;
+    const decay = Math.exp(-10 * dt);
+    for (const ar of [...this.archers]) {
+      ar.flash -= dt;
+      ar.stun -= dt;
+      ar.cd -= dt;
+      ar.x += ar.kbx * dt; ar.y += ar.kby * dt;
+      ar.kbx *= decay; ar.kby *= decay;
+      if (ar.stun > 0) continue;
+      if (!ar.entered && onScreen(ar, -8)) ar.entered = true;
+
+      const d = dist(ar, k);
+      if (ar.state === 'draw') {
+        ar.t -= dt;
+        ar.aim = Math.atan2(k.y - ar.y, k.x - ar.x);
+        ar.face = k.x < ar.x ? -1 : 1;
+        if (ar.t <= 0) {
+          this.loose(ar);
+          ar.state = 'move';
+          ar.cd = CFG.archerCooldown;
+        }
+        continue;
+      }
+      if (ar.entered && ar.cd <= 0 && d <= CFG.archerRange) {
+        ar.state = 'draw';
+        ar.t = CFG.archerDraw;
+        continue;
+      }
+
+      // Walk in if far (or still off the screen), back away if close, otherwise stand.
+      const toward = (!ar.entered || d > CFG.archerRange) ? 1 : d < CFG.archerKeepAway ? -1 : 0;
+      if (toward !== 0 && d > 0.5) {
+        const s = this.steer(ar, (toward * (k.x - ar.x)) / d, (toward * (k.y - ar.y)) / d);
+        const sp = (toward > 0 ? CFG.archerSpeed : CFG.archerRetreatSpeed) * this.speedMul;
+        ar.x += s.x * sp * dt;
+        ar.y += s.y * sp * dt;
+        ar.walkT += dt;
+        if (Math.abs(s.x) > 0.1) ar.face = s.x < 0 ? -1 : 1;
+      }
+      if (ar.entered) {
+        ar.x = clamp(ar.x, 5, W - 5);
+        ar.y = clamp(ar.y, HUD_H + 12, H - 3);
+      }
+    }
+    this.separate(this.archers, 8);
+    for (const ar of this.archers) this.collide(ar);
+  }
+
+  // One arrow, aimed at Wenceslas where he stands now, with a random error.
+  /** @param {Archer} ar */
+  loose(ar) {
+    const k = this.king;
+    const a = Math.atan2(k.y - ar.y, k.x - ar.x) + this.rng.range(-CFG.archerSpread, CFG.archerSpread);
+    const c = Math.cos(a), s = Math.sin(a);
+    this.arrows.push({
+      id: nextId++, x: ar.x + c * 6, y: ar.y + s * 6,
+      vx: c * CFG.arrowSpeed, vy: s * CFG.arrowSpeed, angle: a, life: CFG.arrowLife,
+    });
+    this.emit('arrowShoot');
+  }
+
+  // Arrows fly straight until they leave the screen, hit a tree, or hit Wenceslas or a page
+  // (whichever they reach first: a page standing in the way takes it).
+  /** @param {number} dt */
+  updateArrows(dt) {
+    for (const a of [...this.arrows]) {
+      a.life -= dt;
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+      let gone = a.life <= 0 || a.x < -20 || a.x > W + 20 || a.y < HUD_H - 20 || a.y > H + 20;
+      if (!gone) {
+        // Trees stop arrows. Rocks and walls are low, so arrows fly over them.
+        for (const o of this.obstacles) {
+          if (o.kind === 'tree' && Math.hypot(a.x - o.x, a.y - o.y) < o.r + CFG.arrowTreeBlock) {
+            this.puff(a.x, a.y - 6, ['#f4f4f4', '#8a5a3c'], 3);
+            this.emit('arrowHit');
+            gone = true;
+            break;
+          }
+        }
+      }
+      if (!gone) {
+        /** @type {King | Page | null} */
+        let hit = null;
+        let best = Infinity;
+        for (const e of [this.king, ...this.pages]) {
+          const d = dist(a, e);
+          if (d < e.r + 2 && d < best) { best = d; hit = e; }
+        }
+        if (hit) {
+          this.damage(hit, a, CFG.arrowDamage);
+          if (hit !== this.king) this.emit('arrowHit');   // the king's own hurt sound covers him
+          gone = true;
+        }
+      }
+      if (gone) this.arrows.splice(this.arrows.indexOf(a), 1);
+    }
+  }
+
   /** @param {Page} pg */
   killPage(pg) {
     this.pages.splice(this.pages.indexOf(pg), 1);
@@ -866,6 +1029,13 @@ export class World {
       if (this.wolfTimer <= 0) {
         if (this.wolves.length < p.maxWolves) this.spawnWolf();
         this.wolfTimer = p.wolfInterval * this.rng.range(0.7, 1.3);
+      }
+    }
+    if (p.maxArchers > 0) {
+      this.archerTimer -= dt;
+      if (this.archerTimer <= 0) {
+        if (this.archers.length < p.maxArchers) this.spawnArcher();
+        this.archerTimer = p.archerInterval * this.rng.range(0.7, 1.3);
       }
     }
   }

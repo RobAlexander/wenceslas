@@ -20,6 +20,8 @@ const SFX_NAMES = /** @type {SfxName[]} */ (Object.keys(SFX));
 const EVENT_SFX = {
   ...Object.fromEntries(SFX_NAMES.map(/** @returns {[string, SfxName]} */ (n) => [n, n])),   // each effect's own event
   wolfSteal: 'foodDrop',   // the food is lost
+  arrowShoot: 'swing',     // an archer looses an arrow
+  arrowHit: 'hit',         // an arrow hits a page or a tree (Wenceslas has his own hurt sound)
 };
 const VARIED = new Set(['swing', 'hit', 'pickup', 'foodDrop', 'deliver']);   // a touch of pitch variation
 const MAX_AT_ONCE = 4;                                                       // per effect, so nothing machine-guns
@@ -37,7 +39,7 @@ export function musicPlan(state, progress = 0) {
     case 'nightEnd': return { run: true, stage: 4, duck: 0.8 };      // the whole carol, in celebration
     case 'ending':   return { run: true, stage: 4, duck: 1 };
     case 'gameover': return { run: false };
-    default:         return { run: true, stage: 1, duck: 0.7 };      // title, high scores, initials: calm
+    default:         return { run: true, stage: 1, duck: 0.7 };      // title, high scores, name entry: calm
   }
 }
 
@@ -152,7 +154,7 @@ export function createAudio({
     onState(state, prev) {
       cur.state = state;
       if (state === 'play' && prev !== 'paused') { cur.progress = 0; if (music) music.restart(0); }
-      else if ((state === 'title' || state === 'highscores' || state === 'initials') && (prev === 'play' || prev === 'paused')) music?.restart(1);
+      else if ((state === 'title' || state === 'highscores' || state === 'nameEntry') && (prev === 'play' || prev === 'paused')) music?.restart(1);
       applyPlan();
     },
 

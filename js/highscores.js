@@ -5,20 +5,33 @@
 
 const SCORES_KEY = 'wenceslas.highscores.v1';
 const HARD_KEY = 'wenceslas.hardUnlocked';
-const INITIALS_KEY = 'wenceslas.initials';
+const NAME_KEY = 'wenceslas.initials';   // the key predates longer names; it still holds the last name used
 export const MAX_SCORES = 10;
 
-/** @typedef {{ initials: string, score: number, night: number, hard: boolean }} ScoreEntry */
+// A player's name on the table: up to MAX_NAME of these characters. Initials were once all there was,
+// so entries saved by older versions have an `initials` field instead of `name`; both are read.
+export const MAX_NAME = 8;
+export const NAME_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.';   // a space first: an empty slot
+
+/** @typedef {{ name: string, score: number, night: number, hard: boolean }} ScoreEntry */
 /** @typedef {Pick<Storage, 'getItem' | 'setItem'>} StorageLike */
+
+// Anything -> a valid name: upper case, only NAME_CHARS, no leading or trailing spaces, at most MAX_NAME.
+// An empty result means there was no usable name.
+/** @param {unknown} v */
+export function cleanName(v) {
+  const kept = [...String(v ?? '').toUpperCase()].filter((c) => NAME_CHARS.includes(c)).join('');
+  return kept.trim().slice(0, MAX_NAME).trim();
+}
 
 /** @param {any} e  anything, possibly corrupt, read back from storage @returns {ScoreEntry | null} */
 function cleanEntry(e) {
   if (!e || typeof e !== 'object') return null;
-  const initials = String(e.initials ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  const name = cleanName(e.name ?? e.initials);
   const score = Number(e.score);
-  if (!initials || !Number.isFinite(score) || score < 0) return null;
+  if (!name || !Number.isFinite(score) || score < 0) return null;
   const night = Math.max(1, Math.min(99, Math.floor(Number(e.night)) || 1));
-  return { initials, score: Math.floor(score), night, hard: !!e.hard };
+  return { name, score: Math.floor(score), night, hard: !!e.hard };
 }
 
 /** @param {() => StorageLike | null | undefined} [getStorage] */
@@ -41,7 +54,7 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
   let mem = [];
   let memHard = false;
   /** @type {string | null} */
-  let memInitials = null;
+  let memName = null;
 
   function load() {
     const raw = read(SCORES_KEY);
@@ -84,12 +97,13 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
     insert,
     hardUnlocked: () => memHard || read(HARD_KEY) === '1',
     unlockHard() { memHard = true; write(HARD_KEY, '1'); },
-    lastInitials() {
-      const v = read(INITIALS_KEY) || memInitials;
-      return v && /^[A-Z]{3}$/.test(v) ? v : 'AAA';
+    // The name used last, to offer again; AAA before there is one.
+    lastName() {
+      const v = read(NAME_KEY) || memName;
+      return v && cleanName(v) === v ? v : 'AAA';
     },
     /** @param {string} v */
-    setInitials(v) { memInitials = v; write(INITIALS_KEY, v); },
+    setName(v) { memName = cleanName(v); write(NAME_KEY, memName); },
   };
 }
 

@@ -17,7 +17,7 @@ mkdirSync(out, { recursive: true });
 const rng = makeRng(7), spr = loadSprites(), snow = makeSnow(rng), backdrop = makeGround(makeRng(8));
 const store = makeStore(() => undefined);
 for (const [i, s] of [['ROB', 21300, 12, false], ['AMY', 15800, 9, true], ['JIM', 9400, 7, false], ['KAT', 4200, 5, false], ['ZED', 1500, 3, false]].entries()) {
-  store.insert({ initials: s[0], score: s[1], night: s[2], hard: s[3] });
+  store.insert({ name: s[0], score: s[1], night: s[2], hard: s[3] });
 }
 
 // Fake input: tests push keys and clicks; mouse position is settable.
@@ -98,27 +98,62 @@ current.enter({ summary, night: 12, score: 18000 }); run(3.2); snap('night-end-f
 
 // game over
 current = screens.gameover; current.enter({ score: 4200, night: 7, hard: false });
+assert.equal(current.invited(), true, 'a score that makes the table is announced');
 press('Enter'); assert.equal(log.length, 0); // locked for the first second
-run(1.2); snap('gameover'); press('Enter'); assert.deepEqual(log.splice(0), ['finishRun:4200']);
+run(1.2); snap('gameover-high-score'); press('Enter'); assert.deepEqual(log.splice(0), ['finishRun:4200']);
+current.enter({ score: 0, night: 2, hard: false });
+assert.equal(current.invited(), false, 'no points, no high score');
+current.enter({ score: 1, night: 2, hard: false });
+assert.equal(current.invited(), true, 'any points qualify while the table has room');
+current.enter({ score: 700, night: 2, hard: false });
+run(1.2); snap('gameover');
 
 // ending, with the partridge landing
 current = screens.ending; current.enter({ score: 21800, night: 12, hard: false });
 run(0.5); snap('ending-falling'); run(2); snap('ending');
 press('Enter'); assert.deepEqual(log.splice(0), ['finishRun:21800']);
 
-// initials: type, arrows, backspace, click arrows, confirm
-current = screens.initials; current.enter({ score: 5000, night: 8, hard: true });
-run(0.3); snap('initials-default');
-press('KeyR', 'KeyO', 'KeyB'); assert.deepEqual(current.letters, [17, 14, 1]);
-press('Backspace', 'ArrowUp'); assert.deepEqual(current.letters, [17, 15, 1]);   // cursor moved back to slot 2
-press('ArrowRight', 'ArrowDown'); assert.deepEqual(current.letters, [17, 15, 0]); // slot 3, wraps A <- B
-queue.click = { x: 320 + 40, y: 168 - 22 }; current.update(1 / 60); // click the up arrow above slot 3
-assert.deepEqual(current.letters, [17, 15, 1]);
-snap('initials-typed');
+// name entry: up to 8 characters; the last name is offered, and the first typed character replaces it
+current = screens.nameEntry; current.enter({ score: 5000, night: 8, hard: true });
+run(0.3); snap('name-default');
+assert.equal(current.name(), 'AAA', 'offered the last name (AAA before there is one)');
+press('KeyR', 'KeyO', 'KeyB'); assert.equal(current.name(), 'ROB', 'typing replaces the offered name');
+press('KeyE', 'KeyR', 'KeyT', 'KeyA', 'Digit7'); assert.equal(current.name(), 'ROBERTA7', 'letters and digits');
+press('KeyX'); assert.equal(current.name().length, 8, 'never more than 8'); assert.equal(current.name(), 'ROBERTAX');
+press('Backspace'); assert.equal(current.name(), 'ROBERTA', 'backspace deletes');
+press('Backspace'); assert.equal(current.name(), 'ROBERT');
+press('Space', 'Minus'); assert.equal(current.name(), 'ROBERT -', 'space and punctuation');
+press('Backspace', 'Backspace'); assert.equal(current.name(), 'ROBERT', 'the dash, then the space');
+press('Backspace', 'Backspace'); assert.equal(current.name(), 'ROBE');
+press('ArrowLeft', 'ArrowUp'); assert.equal(current.name(), 'ROBF', 'left moves to the E, up changes it');
+press('ArrowDown', 'ArrowDown'); assert.equal(current.name(), 'ROBD', 'down goes the other way');
+press('ArrowRight', 'KeyB'); assert.equal(current.name(), 'ROBDB', 'typing carries on from the cursor');
+queue.click = { x: 180, y: 146 }; current.update(1 / 60);        // the up arrow over the first slot
+assert.equal(current.name(), 'SOBDB', 'clicking an arrow changes that slot');
+queue.click = { x: 180, y: 205 }; current.update(1 / 60);        // the down arrow under it
+assert.equal(current.name(), 'ROBDB');
+snap('name-typed');
 press('Enter');
 assert.deepEqual(log.splice(0), ['go:highscores']);
-assert.equal(store.load().find((e) => e.score === 5000).initials, 'RPB');
-assert.equal(store.lastInitials(), 'RPB');
+assert.equal(store.load().find((e) => e.score === 5000).name, 'ROBDB');
+assert.equal(store.lastName(), 'ROBDB');
+// the saved name is offered next time, and a different one replaces it whole
+current = screens.nameEntry; current.enter({ score: 10, night: 1, hard: false });
+assert.equal(current.name(), 'ROBDB');
+press('KeyK'); assert.equal(current.name(), 'K');
+// there has to be a name: with nothing in any slot, Enter and OK do nothing
+press('Backspace'); assert.equal(current.name(), '');
+snap('name-empty');
+events.length = 0;
+press('Enter'); queue.click = { x: 320, y: 252 }; current.update(1 / 60);
+assert.deepEqual(log.splice(0), [], 'no empty names');
+assert.ok(!events.includes('menuSelect'));
+press('KeyZ'); queue.click = { x: 320, y: 252 }; current.update(1 / 60);   // the OK button
+assert.deepEqual(log.splice(0), ['go:highscores']);
+assert.equal(store.lastName(), 'Z');
+// a long name fits the table
+current = screens.nameEntry; current.enter({ score: 5100, night: 9, hard: false });
+press(...'LONGNAME'.split('').map((c) => 'Key' + c)); press('Enter'); log.splice(0);
 snap('highscores-new');  // 'current' is now the high score screen
 run(0.4); snap('highscores-new-b');
 

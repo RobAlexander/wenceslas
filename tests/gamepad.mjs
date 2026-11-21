@@ -98,7 +98,7 @@ assert.deepEqual(keyFor('title', A), ['Enter']);
 assert.deepEqual(keyFor('title', B), ['Escape']);
 assert.deepEqual(keyFor('title', START), ['Enter']);
 assert.deepEqual(keyFor('paused', START), ['Escape']);
-assert.deepEqual(keyFor('initials', UP), ['ArrowUp']);
+assert.deepEqual(keyFor('nameEntry', UP), ['ArrowUp']);
 
 // unplugging in play zeroes the pad's contribution
 pad = mk([0.9, 0, 0, 0]); gp.update(1 / 60, 'play'); take();

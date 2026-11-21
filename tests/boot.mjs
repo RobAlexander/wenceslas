@@ -1,6 +1,6 @@
 // Boots the real main.js under stubbed browser globals (no browser needed) and
 // plays through the whole flow with synthetic input:
-// title -> night 1 -> pause -> ... -> night 12 -> ending -> initials -> table -> title,
+// title -> night 1 -> pause -> ... -> night 12 -> ending -> name entry -> table -> title,
 // plus game over. Fails on any thrown error. Run with: node tests/boot.mjs
 import { createCanvas } from 'canvas';
 import assert from 'node:assert/strict';
@@ -251,7 +251,7 @@ assert.equal(game.audio.music.pendingStage ?? game.audio.music.stage, 4, 'the wh
 secs(1.7);
 assert.ok(sfxPlayed().includes('partridge'), 'the partridge calls');
 key('Enter');
-assert.equal(game.state, 'initials');
+assert.equal(game.state, 'nameEntry');
 key('KeyF');                                   // a letter here, not fullscreen
 assert.equal(fullscreenCalls, fsAfterTouch);
 key('KeyM'); assert.equal(game.audio.muted, false);   // nor mute
@@ -276,6 +276,19 @@ assert.equal(game.audio.music.running, false, 'game over stops the music');
 secs(1.2);
 key('Enter');
 assert.equal(game.state, 'highscores');
+secs(0.5); key('Enter');
+assert.equal(game.state, 'title');
+
+// a death with points on the board is invited to enter a name, however far the player got
+key('Enter'); assert.equal(game.state, 'play');
+game.score = 500;
+game.world.king.hp = 0; game.world.dead = true; frames(2);
+assert.equal(game.state, 'gameover');
+secs(1.2); key('Enter');
+assert.equal(game.state, 'nameEntry', 'an honest death with points is invited to enter a name');
+key('KeyB'); key('KeyE'); key('KeyN'); key('Enter');
+assert.equal(game.state, 'highscores');
+assert.ok(JSON.parse(localStorage.getItem('wenceslas.highscores.v1')).some((e) => e.name === 'BEN' && e.score === 500), 'and the name is saved with the score');
 secs(0.5); key('Enter');
 assert.equal(game.state, 'title');
 
@@ -308,6 +321,8 @@ assert.equal(game.state, 'play', 'Escape and P are for the console, not pause');
 press('Backspace'); frames(1);
 type('spawn wolf 2'); enter();
 assert.equal(game.world.wolves.length, 2);
+type('spawn archer'); enter();
+assert.equal(game.world.archers.length, 1);
 type('god'); enter(); assert.equal(game.world.king.god, true);
 type('bogus'); enter();
 assert.ok(game.console.log.at(-1).startsWith('UNKNOWN'));
@@ -319,12 +334,14 @@ assert.equal(game.console.open, false);
 const hp0 = game.world.king.hp;
 game.world.damage(game.world.king, { x: 0, y: 0 });
 assert.equal(game.world.king.hp, hp0, 'god mode');
-// a run that used the console doesn't go on the high score table
+// a run that used the console still gets to enter a name
 game.score = 999999;
 game.world.dead = true; frames(2);
 assert.equal(game.state, 'gameover');
 secs(1.2); key('Enter');
-assert.equal(game.state, 'highscores', 'no initials entry after cheating');
+assert.equal(game.state, 'nameEntry', 'a run that used the console can enter a name too');
+key('Enter');                                  // the name from last time is offered
+assert.equal(game.state, 'highscores');
 
 console.log('boot: full flow passed');
 process.exit(0);   // the music's timer would otherwise keep Node running

@@ -128,7 +128,7 @@ assert.ok(musicPlan('paused').duck < 0.5, 'and turns it down');
 assert.equal(musicPlan('nightEnd').stage, 4, 'the whole carol when a night is won');
 assert.equal(musicPlan('ending').stage, 4);
 assert.equal(musicPlan('gameover').run, false, 'silence for game over');
-for (const s of ['title', 'highscores', 'initials']) assert.deepEqual([musicPlan(s).run, musicPlan(s).stage], [true, 1]);
+for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPlan(s).run, musicPlan(s).stage], [true, 1]);
 
 {
   const { audio, log } = await setup();

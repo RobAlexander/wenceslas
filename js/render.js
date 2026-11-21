@@ -11,6 +11,8 @@ import { makeCanvas } from './canvas.js';
 /** @typedef {import('./world.js').Page} Page */
 /** @typedef {import('./world.js').Robber} Robber */
 /** @typedef {import('./world.js').Wolf} Wolf */
+/** @typedef {import('./world.js').Archer} Archer */
+/** @typedef {import('./world.js').Arrow} Arrow */
 /** @typedef {import('./world.js').OldMan} OldMan */
 /** @typedef {import('./world.js').Obstacle} Obstacle */
 /** @typedef {ReturnType<typeof import('./sprites.js').loadSprites>} Sprites */
@@ -204,6 +206,46 @@ function drawRobber(ctx, spr, rob) {
   }
 }
 
+// The archer, with its bow: carried at its side, or drawn toward Wenceslas with an arrow nocked
+// and a red "!" (the telegraph) while it takes aim.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Archer} ar */
+function drawArcher(ctx, spr, ar) {
+  const drawing = ar.state === 'draw';
+  blitChar(ctx, spr.archer, ar, { moving: !drawing && ar.stun <= 0, flash: ar.flash > 0 });
+  const cx = ar.x, cy = ar.y - 8;
+  if (drawing) {
+    const c = Math.cos(ar.aim), s = Math.sin(ar.aim);
+    const bx = cx + c * 8, by = cy + s * 8;                         // the middle of the bow
+    const px = -s, py = c;                                          // along the bow, across the aim
+    line(ctx, bx + px * 5, by + py * 5, bx + c * 2, by + s * 2, PAL.b);   // limbs bow toward the target
+    line(ctx, bx + c * 2, by + s * 2, bx - px * 5, by - py * 5, PAL.b);
+    line(ctx, bx + px * 5, by + py * 5, cx + c * 3, cy + s * 3, PAL.w);   // string drawn back to the chest
+    line(ctx, cx + c * 3, cy + s * 3, bx - px * 5, by - py * 5, PAL.w);
+    line(ctx, cx + c * 3, cy + s * 3, bx + c * 5, by + s * 5, PAL.n);     // the nocked arrow
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(Math.round(ar.x) - 1, Math.round(ar.y - 21), 2, 3);      // "!" telegraph
+    ctx.fillRect(Math.round(ar.x) - 1, Math.round(ar.y - 17), 2, 1);
+  } else {
+    const hx = ar.x + ar.face * 5;
+    line(ctx, hx, cy - 4, hx + ar.face, cy, PAL.b);                  // the bow, carried upright
+    line(ctx, hx + ar.face, cy, hx, cy + 4, PAL.b);
+    line(ctx, hx, cy - 4, hx, cy + 4, PAL.w);
+  }
+}
+
+// An arrow in flight: drawn at body height, with a small shadow on the ground.
+/** @param {CanvasRenderingContext2D} ctx @param {Arrow} a */
+function drawArrow(ctx, a) {
+  const c = Math.cos(a.angle), s = Math.sin(a.angle), y = a.y - 6;
+  shadow(ctx, a.x, a.y, 3);
+  line(ctx, a.x - c * 7, y - s * 7, a.x, y, PAL.m);                  // shaft: dark, so it shows on snow
+  ctx.fillStyle = PAL.r;
+  ctx.fillRect(Math.round(a.x - c * 7), Math.round(y - s * 7), 1, 1);   // fletching
+  ctx.fillStyle = PAL.k;
+  ctx.fillRect(Math.round(a.x + c), Math.round(y + s), 1, 1);          // head
+  ctx.fillRect(Math.round(a.x), Math.round(y), 1, 1);
+}
+
 /** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Wolf} wf */
 function drawWolf(ctx, spr, wf) {
   const crouch = wf.state === 'crouch';
@@ -302,6 +344,10 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   for (const wf of world.wolves) {
     items.push({ y: wf.y, draw: () => { shadow(ctx, wf.x, wf.y - 1, 11); drawWolf(ctx, spr, wf); } });
   }
+  for (const ar of world.archers) {
+    items.push({ y: ar.y, draw: () => { shadow(ctx, ar.x, ar.y - 1); drawArcher(ctx, spr, ar); } });
+  }
+  for (const a of world.arrows) items.push({ y: a.y, draw: () => drawArrow(ctx, a) });
   const k = world.king;
   items.push({
     y: k.y,
