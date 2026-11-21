@@ -41,6 +41,18 @@ globalThis.fetch = async (url) => ({ ok: true, arrayBuffer: async () => new Text
 const sfxPlayed = () => audioLog.started.filter((s) => s.buffer?.sfx).map((s) => s.buffer.sfx);
 Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => [padNow] }, configurable: true });
 Object.defineProperty(globalThis, 'performance', { value: { now: () => now }, configurable: true });
+// An in-memory localStorage, as in a browser. Node 25+ has its own, which warns
+// and returns undefined unless given --localstorage-file.
+const stored = new Map();
+Object.defineProperty(globalThis, 'localStorage', {
+  value: {
+    getItem: (k) => (stored.has(k) ? stored.get(k) : null),
+    setItem: (k, v) => { stored.set(k, String(v)); },
+    removeItem: (k) => { stored.delete(k); },
+    clear: () => { stored.clear(); },
+  },
+  configurable: true,
+});
 
 await import('../js/main.js');
 const game = globalThis.__wenceslas;
