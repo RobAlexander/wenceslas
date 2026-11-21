@@ -65,24 +65,32 @@ export const CFG = {
 };
 
 export const NIGHTS = 12;
-export const WOLVES_FROM = 3; // first night with wolves
 
-// Per-night difficulty. n runs from 1 to 12.
+// The difficulty table below was written for a game that opened gently. The first
+// nights proved too easy, so night 1 now plays like the table's level 3, night 2 like
+// level 4, and so on: the table is read NIGHT_OFFSET levels ahead of the night number.
+export const NIGHT_OFFSET = 2;
+
+const WOLVES_FROM_LEVEL = 3;
+export const WOLVES_FROM = Math.max(1, WOLVES_FROM_LEVEL - NIGHT_OFFSET); // first night with wolves
+
+// Per-night difficulty. n is the night, 1 to NIGHTS; the table runs on level = n + NIGHT_OFFSET.
 /** @param {number} n */
 export function nightParams(n) {
+  const lv = n + NIGHT_OFFSET;
   return {
-    foodTarget: 2 + n,                          // 3 .. 14
-    maxRobbers: Math.min(1 + Math.floor(n * 0.75), 10),
-    robberInterval: Math.max(1.6, 7 - n * 0.45),
-    firstRobber: Math.max(2.5, 7 - n * 0.4),
-    toughRobberChance: Math.max(0, (n - 5) * 0.1), // 2-hit robbers from night 6
-    maxWanderingPages: 2 + Math.floor(n / 4),
+    foodTarget: 2 + lv,                          // 5 .. 16
+    maxRobbers: Math.min(1 + Math.floor(lv * 0.75), 10),
+    robberInterval: Math.max(1.6, 7 - lv * 0.45),
+    firstRobber: Math.max(2.5, 7 - lv * 0.4),
+    toughRobberChance: Math.max(0, (lv - 5) * 0.1), // 2-hit robbers from level 6
+    maxWanderingPages: 2 + Math.floor(lv / 4),
     pageInterval: 4,
-    maxFood: 3 + Math.floor(n / 4),
+    maxFood: 3 + Math.floor(lv / 4),
     foodInterval: 2.5,
-    maxWolves: n < WOLVES_FROM ? 0 : Math.min(1 + Math.floor((n - WOLVES_FROM) / 3), 4), // 1 .. 4
-    wolfInterval: Math.max(6, 16 - n),
-    firstWolf: Math.max(8, 20 - n),
+    maxWolves: lv < WOLVES_FROM_LEVEL ? 0 : Math.min(1 + Math.floor((lv - WOLVES_FROM_LEVEL) / 3), 4), // 1 .. 4
+    wolfInterval: Math.max(6, 16 - lv),
+    firstWolf: Math.max(8, 20 - lv),
   };
 }
 

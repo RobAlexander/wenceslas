@@ -106,7 +106,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 ## Design decisions (beyond the brief)
 
 - Food is delivered when Wenceslas reaches the old man; carrying pages hand over one item at a time.
-- Food target is 2 + night number (3 on night 1, 14 on night 12). Robber count and spawn rate rise each night; from night 6 some robbers take two hits.
+- The difficulty table (`nightParams` in `js/config.js`) is read two levels ahead (`NIGHT_OFFSET`), because the first two levels were too easy: night 1 plays like level 3, and night 12 like level 14. Food target is 2 + level (5 on night 1, 16 on night 12). Robber count and spawn rate rise each night; from night 4 some robbers take two hits.
 - Pages are dropped between nights: each night starts with Wenceslas alone.
 - Wenceslas has 10 HP and recovers half his maximum between nights. Pages have 2 HP.
 - The sword doesn't hurt pages.
@@ -117,7 +117,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - Hard mode is unlocked, and stays unlocked, once night 12 has been cleared.
 - Quitting from the pause menu doesn't record a score.
 - Robbers raise their club (with a red "!") for 0.35 s before a blow lands, so attacks can be read and interrupted.
-- Wolves appear from night 3: one at a time on nights 3 to 5, rising to four on night 12. They're faster than Wenceslas.
+- Wolves are there from night 1: one at a time on nights 1 to 3, rising to four from night 10. They're faster than Wenceslas.
   A wolf goes for the nearest page carrying food, crouches (with a red "!") for 0.3 s, then leaps. If it reaches the page,
   it takes the food, bites the page for 1 HP and runs for the nearest edge. Killing it before it gets away drops the food.
   With no food being carried, wolves circle loosely round Wenceslas and do no harm. One sword hit kills a wolf, for the

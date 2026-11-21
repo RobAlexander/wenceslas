@@ -368,7 +368,7 @@ const legend = (spr) => [
   [[spr.robber.frames[0].normal], 'ROBBER', PAL.o,
     'GOES FOR YOUR PAGES, OR FOR YOU IF YOU GET CLOSE. A RED ! MEANS A BLOW IS COMING.'],
   [[spr.wolf.frames[0].normal], 'WOLF', PAL.n,
-    'FROM NIGHT ' + WOLVES_FROM + '. LEAPS AT A PAGE WITH FOOD, BITES IT AND RUNS OFF WITH THE FOOD. KILL IT TO GET THE FOOD BACK.'],
+    (WOLVES_FROM > 1 ? 'FROM NIGHT ' + WOLVES_FROM + '. ' : '') + 'LEAPS AT A PAGE WITH FOOD, BITES IT AND RUNS OFF WITH THE FOOD. KILL IT TO GET THE FOOD BACK.'],
   [[spr.trees[0].img, spr.rock.img], 'TREES, ROCKS, WALLS', PAL.n,
     'THEY BLOCK THE WAY, FOR YOU AND YOUR ENEMIES ALIKE.'],
 ];
