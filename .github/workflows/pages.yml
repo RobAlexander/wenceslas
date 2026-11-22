@@ -41,6 +41,8 @@ jobs:
           node tests/wolves.mjs
           node tests/archers.mjs
           node tests/sword.mjs
+          node tests/mouseaim.mjs
+          node tests/arrange.mjs
           node tests/tuning.mjs
           node tests/gamepad.mjs
           node tests/music.mjs
