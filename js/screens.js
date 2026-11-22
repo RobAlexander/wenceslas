@@ -75,6 +75,7 @@ import { MAX_NAME, NAME_CHARS, cleanName } from './highscores.js';
  * @property {() => void} quitToTitle
  * @property {() => void} nextNight
  * @property {(run: RunResult) => void} finishRun   after game over or the ending
+ * @property {(mode: 'move' | 'pointer') => void} setMouseAim   saved between sessions
  */
 
 /**
@@ -273,6 +274,43 @@ class Menu {
   }
 }
 
+// ---------- options ----------
+
+// The options list, shown by the title and pause screens in place of their own menu.
+// (It is part of those screens rather than a screen of its own, so the game state and music don't change.)
+/** @param {ScreenEnv} env */
+function optionsPanel(env) {
+  const labels = () => ['MOUSE AIM: ' + (env.scores.mouseAim() === 'move' ? 'MOVE' : 'CURSOR'), 'BACK'];
+  const menu = new Menu(env, labels(), { y: 150 });
+  return {
+    active: false,
+    /** @param {number} y  where the list starts */
+    open(y) {
+      this.active = true;
+      menu.y = y;
+      menu.sel = 0;
+      menu.labels = labels();
+    },
+    // keys: the key codes taken this frame.
+    /** @param {string[]} keys */
+    update(keys) {
+      if (keys.includes('Escape')) { env.events.push('menuSelect'); this.active = false; return; }
+      const c = menu.update(keys);
+      if (c === 0) {
+        env.actions.setMouseAim(env.scores.mouseAim() === 'move' ? 'pointer' : 'move');
+        menu.labels = labels();
+      } else if (c === 1) this.active = false;
+    },
+    /** @param {CanvasRenderingContext2D} ctx @param {number} t */
+    draw(ctx, t) {
+      menu.draw(ctx, t);
+      const move = env.scores.mouseAim() === 'move';
+      caption(ctx, move ? 'MOVE THE MOUSE TO POINT THE SWORD' : 'THE SWORD POINTS AT THE CURSOR', menu.y + 46, PAL.n);
+      caption(ctx, 'MOVE MODE WORKS MORE RELIABLY IN FULLSCREEN (PRESS F)', menu.y + 60, PAL.y);
+    },
+  };
+}
+
 // ---------- title ----------
 
 /** @type {[number, number, number][]} x, y, tree variant */
@@ -284,11 +322,14 @@ function titleScreen(env) {
   /** @type {[string, () => void][]} */
   let items = [];
   let menu = new Menu(env, [], { y: 150 });
+  const options = optionsPanel(env);
 
   function enter() {
     t = 0;
+    options.active = false;
     items = [['START', () => env.actions.newGame(false)]];
     if (env.scores.hardUnlocked()) items.push(['HARD MODE', () => env.actions.newGame(true)]);
+    items.push(['OPTIONS', () => options.open(150)]);
     items.push(['HOW TO PLAY', () => env.go('howto')]);
     items.push(['HIGH SCORES', () => env.go('highscores', { highlight: 0 })]);
     menu = new Menu(env, items.map((i) => i[0]), { y: 150 });
@@ -297,6 +338,7 @@ function titleScreen(env) {
   /** @param {number} dt */
   function update(dt) {
     t += dt;
+    if (options.active) { options.update(env.input.takeKeys()); return; }
     const c = menu.update(env.input.takeKeys());
     if (c >= 0) items[c][1]();
   }
@@ -312,9 +354,10 @@ function titleScreen(env) {
       ctx.drawImage(tr.img, x - 8, y - tr.h + 1);
     }
     bigText(ctx, 'WENCESLAS', 36, PAL.y, 6, PAL.r);
-    menu.draw(ctx, t);
+    if (options.active) options.draw(ctx, t);
+    else menu.draw(ctx, t);
 
-    caption(ctx, say(env, 'WASD OR ARROWS AND ENTER, OR USE THE MOUSE', 'TAP A BUTTON'), 262);
+    caption(ctx, say(env, 'WASD OR ARROWS AND ENTER, OR USE THE MOUSE', 'TAP A BUTTON'), options.active ? 290 : 262);
 
     // The king leads a line of pages across the bottom of the screen.
     const speed = 34, span = W + 150;
@@ -422,30 +465,36 @@ function howToScreen(env) {
 /** @param {ScreenEnv} env @returns {Screen<void>} */
 function pauseScreen(env) {
   let t = 0;
-  let menu = new Menu(env, ['RESUME', 'QUIT TO TITLE'], { y: 150 });
+  const labels = ['RESUME', 'OPTIONS', 'QUIT TO TITLE'];
+  let menu = new Menu(env, labels, { y: 130 });
+  const options = optionsPanel(env);
 
   function enter() {
     t = 0;
-    menu = new Menu(env, ['RESUME', 'QUIT TO TITLE'], { y: 150 });
+    options.active = false;
+    menu = new Menu(env, labels, { y: 130 });
   }
 
   /** @param {number} dt */
   function update(dt) {
     t += dt;
     const keys = env.input.takeKeys();
+    if (options.active) { options.update(keys); return; }
     if (keys.includes('Escape') || keys.includes('KeyP')) { env.events.push('menuSelect'); env.actions.resume(); return; }
     const c = menu.update(keys);
     if (c === 0) env.actions.resume();
-    else if (c === 1) env.actions.quitToTitle();
+    else if (c === 1) options.open(130);
+    else if (c === 2) env.actions.quitToTitle();
   }
 
   /** @param {CanvasRenderingContext2D} ctx */
   function draw(ctx) {
     dim(ctx);
-    box(ctx, W / 2 - 110, 86, 220, 120);
-    drawText(ctx, 'PAUSED', W / 2, 100, PAL.y, { scale: 3, align: 'center' });
-    menu.draw(ctx, t);
-    drawText(ctx, say(env, 'ESC TO RESUME    M TO MUTE', 'TAP RESUME TO CONTINUE'), W / 2, 192, PAL.n, { align: 'center' });
+    box(ctx, W / 2 - 150, 86, 300, 140);
+    drawText(ctx, options.active ? 'OPTIONS' : 'PAUSED', W / 2, 100, PAL.y, { scale: 3, align: 'center' });
+    if (options.active) options.draw(ctx, t);
+    else menu.draw(ctx, t);
+    drawText(ctx, say(env, options.active ? 'ESC TO GO BACK    M TO MUTE' : 'ESC TO RESUME    M TO MUTE', options.active ? 'TAP BACK TO RETURN' : 'TAP RESUME TO CONTINUE'), W / 2, 212, PAL.n, { align: 'center' });
   }
 
   return { overlay: true, enter, update, draw };

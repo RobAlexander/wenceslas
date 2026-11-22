@@ -35,7 +35,7 @@ const env = {
   go: (name, data) => { log.push('go:' + name); current = screens[name]; current.enter(data); },
   actions: {
     newGame: (h) => log.push('newGame:' + h), resume: () => log.push('resume'), quitToTitle: () => log.push('quit'),
-    nextNight: () => log.push('nextNight'), finishRun: (r) => log.push('finishRun:' + r.score),
+    nextNight: () => log.push('nextNight'), setMouseAim: (m) => { log.push('aim:' + m); store.setMouseAim(m); }, finishRun: (r) => log.push('finishRun:' + r.score),
   },
 };
 const screens = createScreens(env);
@@ -61,16 +61,30 @@ const press = (...k) => { queue.keys.push(...k); current.update(1 / 60); };
 // title
 current = screens.title; current.enter(); run(2.2); snap('title');
 press('ArrowDown'); assert.ok(events.includes('menuMove')); events.length = 0;
-press('Enter'); assert.deepEqual(log.splice(0), ['go:howto']); // second item is HOW TO PLAY (hard locked)
+press('ArrowDown', 'Enter'); assert.deepEqual(log.splice(0), ['go:howto']); // START, OPTIONS, HOW TO PLAY (hard locked)
 assert.ok(events.includes('menuSelect')); events.length = 0;
 current = screens.title; current.enter();
-press('ArrowDown', 'ArrowDown', 'Enter'); assert.deepEqual(log.splice(0), ['go:highscores']);
+press('ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter'); assert.deepEqual(log.splice(0), ['go:highscores']);
+
+// options: from the title; toggles the mouse aim, Escape and BACK both return to the menu
+current = screens.title; current.enter(); press('ArrowDown', 'Enter'); assert.deepEqual(log, []);
+run(0.3); snap('title-options');
+assert.equal(store.mouseAim(), 'move');
+press('Enter'); assert.deepEqual(log.splice(0), ['aim:pointer']); assert.equal(store.mouseAim(), 'pointer');
+run(0.3); snap('title-options-cursor');
+press('Enter'); assert.deepEqual(log.splice(0), ['aim:move']);
+press('ArrowDown', 'Enter');                       // BACK
+press('Enter'); assert.deepEqual(log.splice(0), [], 'back on the menu: the highlight is still on OPTIONS');
+press('Escape');                                   // Escape closes the options
+press('ArrowUp', 'Enter'); assert.deepEqual(log.splice(0), ['newGame:false']);   // the menu is live again
+current = screens.title; current.enter(); press('ArrowDown', 'Enter'); press('Escape'); press('ArrowUp', 'Enter');
+assert.deepEqual(log.splice(0), ['newGame:false']);
 current = screens.title; current.enter();
 press('Enter'); assert.deepEqual(log.splice(0), ['newGame:false']);
 store.unlockHard();
 current.enter(); press('ArrowDown'); press('Enter'); assert.deepEqual(log.splice(0), ['newGame:true']);
-// mouse: click on an item (START, HARD MODE, HOW TO PLAY, HIGH SCORES)
-current.enter(); queue.click = { x: 320, y: 210 }; current.update(1 / 60);
+// mouse: click on an item (START, HARD MODE, OPTIONS, HOW TO PLAY, HIGH SCORES)
+current.enter(); queue.click = { x: 320, y: 230 }; current.update(1 / 60);
 assert.deepEqual(log.splice(0), ['go:highscores']);
 snap('title-hard-unlocked');
 
@@ -85,7 +99,11 @@ run(0.4); queue.click = { x: 10, y: 10 }; current.update(1 / 60); assert.deepEqu
 // pause
 current = screens.paused; current.enter(); run(0.5); snap('paused');
 press('Escape'); assert.deepEqual(log.splice(0), ['resume']);
-current.enter(); press('ArrowDown', 'Enter'); assert.deepEqual(log.splice(0), ['quit']);
+current.enter(); press('ArrowDown', 'ArrowDown', 'Enter'); assert.deepEqual(log.splice(0), ['quit']);
+// pause options: Escape closes the options first, and only then resumes
+current.enter(); press('ArrowDown', 'Enter'); run(0.3); snap('paused-options');
+press('Escape'); assert.deepEqual(log, []);
+press('Escape'); assert.deepEqual(log.splice(0), ['resume']);
 
 // night complete: mid-count, skip, then continue
 const summary = { food: 400, foodCount: 4, kills: 100, killCount: 4, time: 52, par: 70, bonus: 180 };

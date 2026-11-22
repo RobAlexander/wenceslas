@@ -117,3 +117,19 @@ const entry = (name, score, extra = {}) => ({ name, score, night: 3, hard: false
   assert.deepEqual(s.load(), [{ name: 'ROB', score: 900, night: 5, hard: true }, { name: 'NEWER', score: 100, night: 1, hard: false }]);
 }
 console.log('highscores: all tests passed');
+
+// mouse aim setting: 'move' unless 'pointer' was chosen; kept in storage, and in memory if storage is blocked
+{
+  const st = fakeStorage();
+  const a = makeStore(() => st);
+  assert.equal(a.mouseAim(), 'move');
+  a.setMouseAim('pointer');
+  assert.equal(makeStore(() => st).mouseAim(), 'pointer');
+  a.setMouseAim('move');
+  assert.equal(makeStore(() => st).mouseAim(), 'move');
+  assert.equal(makeStore(() => fakeStorage({ 'wenceslas.mouseAim': 'junk' })).mouseAim(), 'move');
+  const boom = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
+  const b = makeStore(() => boom);
+  b.setMouseAim('pointer');
+  assert.equal(b.mouseAim(), 'pointer');
+}

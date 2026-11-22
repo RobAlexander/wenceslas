@@ -5,6 +5,7 @@
 
 const SCORES_KEY = 'wenceslas.highscores.v1';
 const HARD_KEY = 'wenceslas.hardUnlocked';
+const AIM_KEY = 'wenceslas.mouseAim';
 const NAME_KEY = 'wenceslas.initials';   // the key predates longer names; it still holds the last name used
 export const MAX_SCORES = 10;
 
@@ -15,6 +16,7 @@ export const NAME_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.';   // a spac
 
 /** @typedef {{ name: string, score: number, night: number, hard: boolean }} ScoreEntry */
 /** @typedef {Pick<Storage, 'getItem' | 'setItem'>} StorageLike */
+/** @typedef {'move' | 'pointer'} MouseAim */
 
 // Anything -> a valid name: upper case, only NAME_CHARS, no leading or trailing spaces, at most MAX_NAME.
 // An empty result means there was no usable name.
@@ -55,6 +57,8 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
   let memHard = false;
   /** @type {string | null} */
   let memName = null;
+  /** @type {MouseAim | null} */
+  let memAim = null;
 
   function load() {
     const raw = read(SCORES_KEY);
@@ -97,6 +101,11 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
     insert,
     hardUnlocked: () => memHard || read(HARD_KEY) === '1',
     unlockHard() { memHard = true; write(HARD_KEY, '1'); },
+    // How the mouse aims the sword: 'move' (mouse motion points it) unless 'pointer' (at the cursor) was chosen.
+    /** @returns {MouseAim} */
+    mouseAim() { return (memAim ?? read(AIM_KEY)) === 'pointer' ? 'pointer' : 'move'; },
+    /** @param {MouseAim} v */
+    setMouseAim(v) { memAim = v === 'pointer' ? 'pointer' : 'move'; write(AIM_KEY, memAim); },
     // The name used last, to offer again; AAA before there is one.
     lastName() {
       const v = read(NAME_KEY) || memName;

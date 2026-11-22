@@ -5,6 +5,8 @@
 // The game talks to it through a few calls: handle(events), onState(...), setProgress(...).
 
 import { createMusic, stageFor } from './music.js';
+import { SONG } from './music-data.js';
+import { arrangement } from './arrange.js';
 
 // Effects in audio/sfx/, with how loud each plays (the files are all normalised, but not equally loud to the ear).
 export const SFX = {
@@ -84,6 +86,10 @@ export function createAudio({
   /** @type {Partial<Record<SfxName, number>>} how many of each effect are sounding */
   const playing = {};
   const cur = { state: 'title', progress: 0 };
+  let nightSong = SONG;   // the arrangement for the night being played; the menus always use SONG
+  // The arrangement a state plays: the night's own while playing it, the classic one around the menus.
+  /** @param {string} state */
+  const songFor = (state) => (state === 'play' || state === 'paused' ? nightSong : SONG);
   let muted = false;
   try { muted = storage?.getItem(MUTE_KEY) === '1'; } catch { /* storage unavailable */ }
 
@@ -93,7 +99,7 @@ export function createAudio({
     if (!music) return;
     const plan = musicPlan(cur.state, cur.progress);
     if (!plan.run) { music.stop(0.4); return; }
-    if (!music.running) music.restart(plan.stage ?? 1);
+    if (!music.running) music.restart(plan.stage ?? 1, songFor(cur.state));
     else if (plan.stage !== null) music.setStage(plan.stage);
     music.setDuck(plan.duck);
   }
@@ -153,10 +159,14 @@ export function createAudio({
     /** @param {string} state @param {string} prev */
     onState(state, prev) {
       cur.state = state;
-      if (state === 'play' && prev !== 'paused') { cur.progress = 0; if (music) music.restart(0); }
-      else if ((state === 'title' || state === 'highscores' || state === 'nameEntry') && (prev === 'play' || prev === 'paused')) music?.restart(1);
+      if (state === 'play' && prev !== 'paused') { cur.progress = 0; if (music) music.restart(0, nightSong); }
+      else if ((state === 'title' || state === 'highscores' || state === 'nameEntry') && (prev === 'play' || prev === 'paused')) music?.restart(1, SONG);
       applyPlan();
     },
+
+    // The night about to be played: it picks the arrangement, which starts with the night itself.
+    /** @param {number} n */
+    setNight(n) { nightSong = arrangement(n); },
 
     // How far through the night's food target we are, 0 to 1.
     /** @param {number} frac */

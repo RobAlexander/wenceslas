@@ -3,16 +3,19 @@
 // It uses the same pattern data, sequencer and note scheduling as the browser, but a simple
 // software mixer instead of Web Audio, so it is a close preview rather than an exact copy.
 //
-//   node tools/render_music.mjs [outdir]     (default: music-out/)
+//   node tools/render_music.mjs [outdir] [night]     (default: music-out/)
+//   With a night, also writes music-night<N>.wav: that night's arrangement, build-up and all.
 //
 // Writes music-stage0.wav ... music-stage4.wav (each stage on its own) and music-night.wav
 // (a whole night's build-up, with the stage changes at phrase boundaries).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Sequencer, makeSamples, phraseEvents, SAMPLE_RATE, PAN, MUSIC_GAIN } from '../js/music.js';
 import { SONG } from '../js/music-data.js';
+import { arrangement } from '../js/arrange.js';
 
 const OUT_RATE = 22050, BASE_GAIN = MUSIC_GAIN;
 const outDir = process.argv[2] || 'music-out';
+const nightArg = Number(process.argv[3]) || 0;
 mkdirSync(outDir, { recursive: true });
 const samples = makeSamples();
 
@@ -65,8 +68,8 @@ function wav(path, { L, R }, seconds) {
 }
 
 // plan: list of [stageToRequestBeforeThisPhrase, count]
-function render(name, plan) {
-  const seq = new Sequencer(SONG);
+function render(name, plan, song = SONG) {
+  const seq = new Sequencer(song);
   let t = 0.1; const events = []; const log = [];
   for (const [stage, count] of plan) {
     seq.setStage(stage);
@@ -86,3 +89,7 @@ function render(name, plan) {
   console.log('   stage:phrase', order);
 });
 console.log('   night:', render('music-night', [[0, 2], [1, 2], [2, 4], [3, 8], [4, 8]]));
+if (nightArg) {
+  const song = arrangement(nightArg);
+  console.log(`   night ${nightArg}:`, render(`music-night${nightArg}`, [[0, 2], [1, 2], [2, 4], [3, 8], [4, 8]], song));
+}

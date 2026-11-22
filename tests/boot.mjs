@@ -14,12 +14,14 @@ const canvas = Object.assign(createCanvas(640, 360), {
   style: {}, addEventListener: on(canvasHandlers),
   getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 360 }),
 });
+const bodyClasses = new Set();   // classes the game puts on <body>
 Object.assign(globalThis, {
   window: globalThis, innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1,
   location: { search: '' }, addEventListener: on(handlers),
   requestAnimationFrame: (cb) => { raf = cb; },
   document: {
     hidden: false, addEventListener() {}, getElementById: () => canvas,
+    body: { classList: { toggle: (name, on) => { bodyClasses[on ? 'add' : 'delete'](name); } } },
     documentElement: { requestFullscreen: () => { fullscreenCalls++; return Promise.resolve(); } },
     createElement: (t) => (t === 'canvas' ? createCanvas(1, 1) : {}),
   },
@@ -127,12 +129,32 @@ fire(handlers, 'keyup', { code: 'KeyD' });
 assert.ok(game.world.king.x > x0 + 20, 'king moved right');
 assert.ok(sfxPlayed().includes('swing'), 'the click swung the sword, and it made a sound');
 
+// relative aiming (the default): moving the mouse points the sword that way, wherever the cursor is
+{
+  const k = game.world.king;
+  assert.equal(game.input.st.mouseAim, 'move');
+  for (let i = 0; i < 5; i++) fire(handlers, 'pointermove', { pointerType: 'mouse', clientX: 100, clientY: 100, movementX: -8, movementY: 0 });
+  secs(0.1);
+  assert.ok(Math.abs(Math.abs(k.aim) - Math.PI) < 0.01, 'moved the mouse left: the sword points left');
+  assert.ok(bodyClasses.has('aiming'), 'the cursor is hidden over the whole page');
+  for (let i = 0; i < 5; i++) fire(handlers, 'pointermove', { pointerType: 'mouse', clientX: 100, clientY: 100, movementX: 0, movementY: 8 });
+  secs(0.1);
+  assert.ok(Math.abs(k.aim) < Math.PI && k.aim > 0, 'moved it down: the sword now points down-ish');
+  // the old behaviour: aim at the cursor
+  game.input.setMouseAim('pointer');
+  mouse(k.x + 50, k.y - 8); secs(0.1);
+  assert.ok(Math.abs(k.aim) < 0.01, 'pointer mode aims at the cursor');
+  assert.ok(!bodyClasses.has('aiming'));
+  game.input.setMouseAim('move');
+  mouse(5, 5);                                   // out of the way of the menus
+}
+
 // pause with Escape, resume with Escape; then quit via the menu
 key('Escape'); assert.equal(game.state, 'paused');
 secs(0.3);
 key('Escape'); assert.equal(game.state, 'play');
 key('Escape'); assert.equal(game.state, 'paused');
-key('ArrowDown'); key('Enter'); assert.equal(game.state, 'title');
+key('ArrowDown'); key('ArrowDown'); key('Enter'); assert.equal(game.state, 'title');
 
 // title: mouse click on START
 mouse(320, 160); click(320, 160);
@@ -186,10 +208,10 @@ assert.ok(king.cd <= 0, 'a long press without a drag is not a tap');
 // the pause button, then tapping RESUME
 tdown(5, 620, 10); tup(5, 620, 10);
 assert.equal(game.state, 'paused');
-tdown(6, 320, 152); tup(6, 320, 152);
+tdown(6, 320, 135); tup(6, 320, 135);
 assert.equal(game.state, 'play');
-// leave through the menu, and start a game by tapping START
-key('Escape'); key('ArrowDown'); key('Enter');
+mouse(5, 5);                                      // the pointer would otherwise highlight an item as the menu opens
+key('Escape'); key('ArrowDown'); key('ArrowDown'); key('Enter');
 assert.equal(game.state, 'title');
 tdown(7, 320, 156); tup(7, 320, 156);
 assert.equal(game.state, 'play');
@@ -224,9 +246,9 @@ setPad(); secs(0.6);
 setPad([0, 0, 0, 0], 9); assert.equal(game.state, 'paused', 'Start pauses');
 setPad(); setPad([0, 0, 0, 0], 9); assert.equal(game.state, 'play', 'Start resumes');
 setPad();
-// menus: d-pad down then A on the pause menu quits to the title; A on the title starts
+// menus: d-pad down twice then A on the pause menu (RESUME, OPTIONS, QUIT) quits to the title; A on the title starts
 setPad([0, 0, 0, 0], 9); setPad();
-setPad([0, 0, 0, 0], 13); setPad(); setPad([0, 0, 0, 0], 0); setPad();
+setPad([0, 0, 0, 0], 13); setPad(); setPad([0, 0, 0, 0], 13); setPad(); setPad([0, 0, 0, 0], 0); setPad();
 assert.equal(game.state, 'title');
 setPad([0, 0, 0, 0], 0); setPad();
 assert.equal(game.state, 'play', 'A starts the game from the title');
@@ -293,12 +315,12 @@ assert.ok(JSON.parse(localStorage.getItem('wenceslas.highscores.v1')).some((e) =
 secs(0.5); key('Enter');
 assert.equal(game.state, 'title');
 
-// how to play, then high scores, from the title (START, HARD MODE, HOW TO PLAY, HIGH SCORES)
-key('ArrowDown'); key('ArrowDown'); key('Enter');
+// how to play, then high scores, from the title (START, HARD MODE, OPTIONS, HOW TO PLAY, HIGH SCORES)
+key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('Enter');
 assert.equal(game.state, 'howto');
 secs(0.5); key('Escape');
 assert.equal(game.state, 'title');
-key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('Enter');
+key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('ArrowDown'); key('Enter');
 assert.equal(game.state, 'highscores');
 secs(0.5); click();
 assert.equal(game.state, 'title');

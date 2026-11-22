@@ -16,6 +16,8 @@
   }
   /* The game scales its own pixels up by whole numbers; the browser only shrinks the result slightly to fit, so smooth scaling is what we want here. */
   canvas { cursor: none; display: block; }
+  /* Aiming by mouse movement: the letterbox margins hide the cursor too, so it never shows mid-fight. */
+  body.aiming { cursor: none; }
   /* A phone held upright can't show the game properly: ask for landscape. */
   #rotate {
     display: none; position: fixed; inset: 0; z-index: 10; box-sizing: border-box; padding: 24px;

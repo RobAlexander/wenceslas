@@ -175,6 +175,26 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   assert.equal(m.stage, 1, 'back to the calm music');
 }
 
+// ---- each night has its own arrangement; the menus keep the classic one
+{
+  const { arrangement } = await import('../js/arrange.js');
+  const { SONG } = await import('../js/music-data.js');
+  const { audio } = await setup();
+  audio.setNight(3);                         // before the first gesture: remembered
+  audio.onState('title', 'title');
+  audio.unlock(); await tick();
+  assert.equal(audio.music.song, SONG, 'the title plays the classic arrangement');
+  audio.onState('play', 'title');
+  assert.equal(audio.music.song, arrangement(3), 'night 3 has its own');
+  assert.notEqual(arrangement(3), SONG);
+  audio.onState('paused', 'play'); audio.onState('play', 'paused');
+  assert.equal(audio.music.song, arrangement(3), 'pausing does not change it');
+  audio.onState('nightEnd', 'play'); audio.setNight(4); audio.onState('play', 'nightEnd');
+  assert.equal(audio.music.song, arrangement(4), 'the next night changes it');
+  audio.onState('title', 'paused');
+  assert.equal(audio.music.song, SONG, 'back to the classic one on the menus');
+}
+
 // ---- tab hidden / shown
 {
   const { audio, log } = await setup();

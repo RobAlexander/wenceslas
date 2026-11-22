@@ -90,7 +90,7 @@ assert.equal(stageFor(1), 4);
 // ---- instrument samples
 {
   const samples = makeSamples();
-  assert.deepEqual(Object.keys(samples), ['bell', 'choir', 'strings', 'bass', 'K', 'S', 'H']);
+  assert.deepEqual(Object.keys(samples), ['bell', 'choir', 'strings', 'bass', 'pluck', 'flute', 'K', 'S', 'H']);
   for (const [name, s] of Object.entries(samples)) {
     assert.ok(s.data.length > 100 && s.data.length < 20000, name + ' is short');
     let peak = 0;
@@ -126,7 +126,7 @@ assert.equal(stageFor(1), 4);
 
   const starts = [];   // every note started: { t, inst, rate, chan }
   let bufCount = 0;
-  const INSTRUMENTS = ['bell', 'choir', 'strings', 'bass', 'K', 'S', 'H'];
+  const INSTRUMENTS = ['bell', 'choir', 'strings', 'bass', 'pluck', 'flute', 'K', 'S', 'H'];
   const param = () => ({ value: 1, setValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {} });
   const ctx = {
     currentTime: 0,

@@ -150,6 +150,7 @@ for (const type of ['pointerdown', 'keydown', 'touchend']) addEventListener(type
 
 const touch = createTouch(input, canvas, { isPlaying: () => game.state === 'play', onFirstTap: enterFullscreen });
 const pad = createGamepad(input);
+input.setMouseAim(scores.mouseAim());
 
 // ---------- flow ----------
 
@@ -184,6 +185,7 @@ function startNight(n) {
   game.night = n;
   ({ world: game.world, ground: game.ground } = makeNight(n, game.hard, game.kingHp, game.god));
   game.banner = 2.5;
+  audio.setNight(n);
   enterPlay();
 }
 
@@ -197,6 +199,8 @@ const actions = {
     startNight(night);
   },
   resume() { enterPlay(); },
+  /** @param {'move' | 'pointer'} mode */
+  setMouseAim(mode) { scores.setMouseAim(mode); input.setMouseAim(mode); },
   quitToTitle() { setState('title'); },
   nextNight() {
     if (game.night >= NIGHTS) { setState('ending', { score: game.score, night: game.night, hard: game.hard }); return; }
@@ -293,6 +297,15 @@ const devConsole = createConsole({
         demo[name]();
       },
     },
+    mouseaim: {
+      args: '(MOVE|CURSOR)', help: 'MOUSE AIM: MOVE POINTS THE SWORD THE WAY THE MOUSE MOVES; NO ARGUMENT TOGGLES',
+      run: ([mode]) => {
+        if (mode && mode !== 'move' && mode !== 'cursor') throw new Error('MODE IS MOVE OR CURSOR');
+        const next = mode ? (mode === 'move' ? 'move' : 'pointer') : input.st.mouseAim === 'move' ? 'pointer' : 'move';
+        actions.setMouseAim(next);
+        return 'MOUSE AIM ' + (next === 'move' ? 'MOVE' : 'CURSOR');
+      },
+    },
     seed: { help: 'SHOW THE RANDOM SEED', run: () => 'SEED ' + seed },
   },
 });
@@ -385,10 +398,12 @@ function draw() {
   }
   if (s) s.draw(ctx);
   touch.draw(ctx, w);
-  if (input.st.lastDevice === 'mouse') {
+  const relative = input.st.lastDevice === 'mouse' && input.st.mouseAim === 'move' && game.state === 'play';
+  document.body.classList.toggle('aiming', relative);
+  if (input.st.lastDevice === 'mouse' && !relative) {
     if (input.st.mouseSeen) drawCrosshair(ctx, input.st.mouse.x, input.st.mouse.y);
   } else if (game.state === 'play') {
-    // Touch and gamepad have no pointer, so mark where the sword is aimed.
+    // Touch, gamepad and relative mouse aiming have no pointer to show, so mark where the sword is aimed.
     const k = w.king;
     drawCrosshair(ctx, k.x + Math.cos(k.aim) * 34, k.y - 8 + Math.sin(k.aim) * 34);
   }

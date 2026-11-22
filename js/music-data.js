@@ -41,6 +41,16 @@ const D = {   // "Deep and crisp and even"
 
 // The tune is sung twice through a verse, so the second half repeats the first.
 export const PHRASES = [A, B, C, D, A, B, C, D];
+
+// The chords under each of the four distinct phrases (A B C D), one per half bar (four rows), in G major.
+// js/arrange.js builds the other arrangements from the melody above and these. DRAFT, like the melody:
+// they were fitted to the hand-written parts by ear, not checked against a score.
+export const CHORDS = [
+  ['G', 'D', 'G', 'D'],
+  ['G', 'D', 'Em', 'Bm'],
+  ['C', 'G', 'G', 'D'],
+  ['D', 'D', 'G', 'G'],
+];
 export const ROWS_PER_PHRASE = 16;
 
 // Stages, from "just the opening phrase" up to the whole carol. The game picks the stage from
@@ -49,7 +59,7 @@ export const ROWS_PER_PHRASE = 16;
 //   bpm          quarter notes per minute (slow at first, a little faster each stage)
 //   voices       which channels play: [lead, harmony, bass, percussion]
 //   instruments  what each channel plays
-/** @typedef {'bell' | 'choir' | 'strings' | 'bass' | 'perc'} Instrument */
+/** @typedef {'bell' | 'choir' | 'strings' | 'bass' | 'pluck' | 'flute' | 'perc'} Instrument */
 /**
  * @type {{ phrases: number[], bpm: number, voices: number[], instruments: (Instrument | null)[] }[]}
  */

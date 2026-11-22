@@ -14,7 +14,7 @@ import { SONG } from './music-data.js';
 /** @typedef {typeof SONG} Song */
 /** @typedef {import('./music-data.js').Instrument} Instrument */
 /** @typedef {'K' | 'S' | 'H'} Perc  kick, snare, hi-hat */
-/** @typedef {'bell' | 'choir' | 'strings' | 'bass'} Pitched */
+/** @typedef {'bell' | 'choir' | 'strings' | 'bass' | 'pluck' | 'flute'} Pitched */
 /** @typedef {Pitched | Perc} SampleName */
 
 /**
@@ -117,10 +117,23 @@ export class Sequencer {
     this.pending = null;
     /** @type {number | null} the phrase played last */
     this.lastId = null;
-    this.parsed = song.phrases.map((p) => [
+    this.parsed = Sequencer.parse(song);
+    this.reset(0);
+  }
+
+  /** @param {Song} song @returns {Cell[][][]} */
+  static parse(song) {
+    return song.phrases.map((p) => [
       parseRow(p.lead, song.rowsPerPhrase), parseRow(p.harm, song.rowsPerPhrase),
       parseRow(p.bass, song.rowsPerPhrase), parseRow(p.perc, song.rowsPerPhrase, true),
     ]);
+  }
+
+  // Switch to another arrangement, starting again from its first stage.
+  /** @param {Song} song */
+  setSong(song) {
+    this.song = song;
+    this.parsed = Sequencer.parse(song);
     this.reset(0);
   }
 
@@ -232,6 +245,21 @@ export function makeSamples() {
   /** @type {Sample} */
   const bell = { data: bellData, period: P, loop: null, baseFreq: f0 };
 
+  // flute: a breathy, nearly pure tone with a little of the 2nd and 3rd harmonics, and chorus
+  const flute = loopedTone(P, 128, (f, k) => (k === 1 ? 1 : k === 2 ? 0.28 : k === 3 ? 0.12 : k === 4 ? 0.04 : 0), true);
+
+  // pluck: a harp-like one shot; the higher partials die away faster
+  const pn = Math.floor(0.9 * SAMPLE_RATE);
+  const pluckData = new Float32Array(pn);
+  for (let i = 0; i < pn; i++) {
+    const t = i / SAMPLE_RATE;
+    let v = 0;
+    for (let k = 1; k <= 6; k++) v += (Math.sin(TAU * f0 * k * t) / Math.pow(k, 1.2)) * Math.exp(-t * (3 + 2.5 * k));
+    pluckData[i] = v * Math.min(1, t / 0.001);
+  }
+  /** @type {Sample} */
+  const pluck = { data: pluckData, period: P, loop: null, baseFreq: f0 };
+
   // percussion: unpitched one-shots, played at their natural rate
   const rand = noiseSource();
   const kickData = new Float32Array(Math.floor(0.22 * SAMPLE_RATE));
@@ -257,6 +285,7 @@ export function makeSamples() {
 
   return {
     bell: normalise(bell), choir: normalise(choir), strings: normalise(strings), bass: normalise(bass),
+    pluck: normalise(pluck), flute: normalise(flute),
     K: normalise(unpitched(kickData)), S: normalise(unpitched(snareData)), H: normalise(unpitched(hatData), 0.7),
   };
 }
@@ -268,6 +297,8 @@ export const VOICING = {
   choir:   { attack: 0.18,  release: 0.35, gain: 0.85 },
   strings: { attack: 0.14,  release: 0.30, gain: 0.30 },
   bass:    { attack: 0.01,  release: 0.10, gain: 0.30 },
+  pluck:   { attack: 0.002, release: 0.15, gain: 0.95, ring: true },
+  flute:   { attack: 0.07,  release: 0.20, gain: 0.60 },
 };
 /** @type {Record<Perc, number>} */
 export const PERC_GAIN = { K: 0.5, S: 0.28, H: 0.15 };
@@ -408,9 +439,12 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
   }
 
   return {
-    // Start (or restart) from the beginning of a stage, at once.
-    restart(stage = 0) {
+    // Start (or restart) from the beginning of a stage, at once. A song switches to that arrangement;
+    // without one the current arrangement carries on.
+    /** @param {number} [stage] @param {Song} [newSong] */
+    restart(stage = 0, newSong) {
       cutAll(0.08);
+      if (newSong && newSong !== seq.song) seq.setSong(newSong);
       seq.reset(stage);
       nextTime = ctx.currentTime + 0.12;
       running = true;
@@ -436,5 +470,6 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
     get stage() { return seq.stage; },
     get pendingStage() { return seq.pending; },
     get phrasesScheduled() { return phraseCount; },
+    get song() { return seq.song; },
   };
 }
