@@ -9,7 +9,7 @@ import { CFG } from '../js/config.js';
 // A robber at distance d from the king's hand (he aims east), tough enough to survive one hit.
 function swingAt(d, { dx = 1 } = {}) {
   const w = new World({ night: 6, hard: false, rng: makeRng(1), events: [] });
-  Object.assign(w.p, { maxRobbers: 0, maxWolves: 0, maxArchers: 0, maryChance: 0, maxFood: 0, maxWanderingPages: 0 });
+  Object.assign(w.p, { maxRobbers: 0, maxWolves: 0, maxArchers: 0, maxFood: 0, maxWanderingPages: 0 });
   w.pages = []; w.line = []; w.obstacles = []; w.foods = [];
   w.king.x = 320; w.king.y = 200; w.trail = [{ x: 320, y: 200 }];
   w.spawnRobber();

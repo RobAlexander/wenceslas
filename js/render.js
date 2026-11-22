@@ -13,7 +13,8 @@ import { makeCanvas } from './canvas.js';
 /** @typedef {import('./world.js').Wolf} Wolf */
 /** @typedef {import('./world.js').Archer} Archer */
 /** @typedef {import('./world.js').Arrow} Arrow */
-/** @typedef {import('./world.js').Mary} Mary */
+/** @typedef {import('./world.js').MaryBoss} MaryBoss */
+/** @typedef {import('./world.js').Boss} Boss */
 /** @typedef {import('./world.js').Frosty} Frosty */
 /** @typedef {import('./world.js').OldMan} OldMan */
 /** @typedef {import('./world.js').Obstacle} Obstacle */
@@ -252,17 +253,17 @@ function iceHalf(ctx, x0, y, w, h, left) {
 }
 
 // How far apart the halves of a splitting block are, and how tall (they sink as they part).
-/** @param {number} h @param {number} open  more than 0.4 @returns {{ gap: number, hh: number }} */
-function icePartsAt(h, open) {
+/** @param {number} h @param {number} open  more than 0.4 @param {number} [w]  the block's width @returns {{ gap: number, hh: number }} */
+function icePartsAt(h, open, w = 14) {
   const f = (open - 0.4) / 0.6;                                   // 0 to 1 as the halves part
-  return { gap: Math.round(f * 12), hh: Math.round(h * (1 - 0.85 * f)) };
+  return { gap: Math.round(f * 12 * (w / 14)), hh: Math.round(h * (1 - 0.85 * f)) };
 }
 
-// Mary's ice block, standing at (x, y) and h tall. open runs 0 to 1 as it splits: first a crack
+// Mary's ice block, standing at (x, y), h tall and w wide. open runs 0 to 1 as it splits: first a crack
 // runs down it, then the halves slide apart and sink.
-/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y @param {number} h @param {number} open */
-function drawIceBlock(ctx, x, y, h, open) {
-  const w = 14, half = w / 2, cx = Math.round(x), by = Math.round(y);
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y @param {number} h @param {number} open @param {number} [w] */
+function drawIceBlock(ctx, x, y, h, open, w = 14) {
+  const half = w / 2, cx = Math.round(x), by = Math.round(y);
   if (open <= 0.4) {
     iceHalf(ctx, cx - half, by, half, h, true);
     iceHalf(ctx, cx, by, half, h, false);
@@ -274,43 +275,110 @@ function drawIceBlock(ctx, x, y, h, open) {
     }
     return;
   }
-  const { gap, hh } = icePartsAt(h, open);
+  const { gap, hh } = icePartsAt(h, open, w);
   iceHalf(ctx, cx - half - gap, by, half, hh, true);
   iceHalf(ctx, cx + gap, by, half, hh, false);
 }
 
-// Mary. In her ice (rise, split) she is only the block; once out she walks, and holds a snowball up
-// before each throw. Her health shows as pips once she has been hurt.
-/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Mary} m */
-function drawMary(ctx, spr, m) {
-  if (m.state === 'rise') {
-    const p = 1 - m.t / CFG.maryRise;
-    drawIceBlock(ctx, m.x + (Math.floor(m.t * 30) % 2), m.y, Math.round(18 * p), 0);   // it trembles as it comes up
+// Dotted warning lines on the ground, from (x, y) along an angle: they turn from red to orange and bolder
+// when the attack has locked in.
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y @param {number} angle @param {number} from @param {number} to @param {boolean} locked */
+function warnLine(ctx, x, y, angle, from, to, locked) {
+  const c = Math.cos(angle), s = Math.sin(angle), size = locked ? 3 : 2;
+  ctx.fillStyle = locked ? PAL.o : PAL.r;
+  for (let d = from; d < to; d += 9) ctx.fillRect(Math.round(x + c * d), Math.round(y - 3 + s * d), size, size);
+}
+
+// Three little stars circling a head: whoever it is, they can be hit now.
+/** @param {CanvasRenderingContext2D} ctx @param {number} cx @param {number} top @param {number} time */
+function drawDizzyStars(ctx, cx, top, time) {
+  for (let i = 0; i < 3; i++) {
+    const a = time * 5 + i * 2.094;
+    const sx = Math.round(cx + Math.cos(a) * 11), sy = Math.round(top - 1 + Math.sin(a) * 3);
+    ctx.fillStyle = PAL.y;
+    ctx.fillRect(sx - 1, sy, 3, 1); ctx.fillRect(sx, sy - 1, 1, 3);
+  }
+}
+
+// Mary the boss is her sprite at twice the size. Her ice block (rise, split) is bigger too.
+const MARY_BLOCK_W = 26, MARY_BLOCK_H = 38;
+
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {MaryBoss} b @param {{ moving?: boolean, flash?: boolean, dx?: number }} [opts] */
+function blitMary(ctx, spr, b, opts = {}) {
+  const f = spr.mary, fi = opts.moving ? Math.floor(b.walkT * 8) % 2 : 0, fr = f.frames[fi];
+  const img = b.face < 0 ? (opts.flash ? fr.whiteFlipped : fr.flipped) : opts.flash ? fr.white : fr.normal;
+  const bob = opts.moving && fi === 1 ? 2 : 0;
+  ctx.drawImage(img, Math.round(b.x + (opts.dx || 0) - f.w), Math.round(b.y - f.h * 2 + 2 - bob), f.w * 2, f.h * 2);
+}
+
+// Mary. Rising and splitting she is only her ice. Then: the warning lines for her next attack (and a
+// snowball held up), the attack, and the rest in which she trudges after Wenceslas, winded, with stars
+// round her head: the time to hit her. Beaten, she is frozen in a block that sinks into the ground.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {MaryBoss} b @param {number} time */
+function drawMary(ctx, spr, b, time) {
+  const f = spr.mary, top = Math.round(b.y - f.h * 2);
+  if (b.state === 'rise') {
+    const p = 1 - b.t / CFG.maryRise;
+    drawIceBlock(ctx, b.x + (Math.floor(b.t * 30) % 2), b.y, Math.round(MARY_BLOCK_H * p), 0, MARY_BLOCK_W);   // it trembles as it comes up
     return;
   }
-  if (m.state === 'split') {
-    const p = 1 - m.t / CFG.marySplit;
+  if (b.state === 'split') {
+    const p = 1 - b.t / CFG.marySplit;
     if (p > 0.4) {
-      const { gap, hh } = icePartsAt(18, p);
+      const { gap, hh } = icePartsAt(MARY_BLOCK_H, p, MARY_BLOCK_W);
       ctx.fillStyle = PAL.D;
-      ctx.fillRect(Math.round(m.x) - gap, Math.round(m.y) - hh, gap * 2, hh);   // the dark opening between the halves
+      ctx.fillRect(Math.round(b.x) - gap, Math.round(b.y) - hh, gap * 2, hh);   // the dark opening between the halves
     }
-    if (p > 0.6) blitChar(ctx, spr.mary, m, { moving: false });   // she is seen once the halves are wide enough apart
-    drawIceBlock(ctx, m.x, m.y, 18, p);                           // the halves go in front of her
+    if (p > 0.6) blitMary(ctx, spr, b);                                         // she is seen once the halves are wide enough apart
+    drawIceBlock(ctx, b.x, b.y, MARY_BLOCK_H, p, MARY_BLOCK_W);                 // the halves go in front of her
     return;
   }
-  blitChar(ctx, spr.mary, m, { moving: m.stun <= 0, flash: m.flash > 0 });
-  if (m.windup > 0) {
-    const hx = m.x + m.face * 4;
-    line(ctx, hx, m.y - 9, hx, m.y - 15, PAL.r);                  // the arm, raised
-    drawSnowball(ctx, hx, m.y - 18);
+  if (b.state === 'dying') {
+    const freeze = CFG.maryDeathFreeze, hold = CFG.maryDeathHold, sink = CFG.maryDeathSink;
+    const e = freeze + hold + sink - b.t;                                       // seconds since she fell
+    const q = e < freeze + hold ? 0 : Math.min(1, (e - freeze - hold) / sink);  // how far the block has sunk, 0 to 1
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(Math.round(b.x) - 40, Math.round(b.y) - 80, 80, 82);              // nothing shows below the ground
+    ctx.clip();
+    ctx.translate(0, Math.round(q * (MARY_BLOCK_H + 4)));
+    blitMary(ctx, spr, b);
+    ctx.globalAlpha = 0.78;
+    drawIceBlock(ctx, b.x, b.y, e < freeze ? Math.round((MARY_BLOCK_H * e) / freeze) : MARY_BLOCK_H, 0, MARY_BLOCK_W);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    return;
   }
-  if (m.hp < m.maxHp) {
-    for (let i = 0; i < m.maxHp; i++) {
-      ctx.fillStyle = i < m.hp ? PAL.r : PAL.D;
-      ctx.fillRect(Math.round(m.x) - 5 + i * 4, Math.round(m.y) - 18, 3, 1);
+
+  if (b.state === 'aim') {
+    // the warning lines
+    const locked = b.attack === 'blast' ? b.locked : b.t < CFG.maryLockTime;
+    if (b.attack === 'blast') {
+      const a = Math.atan2(b.dy, b.dx);
+      warnLine(ctx, b.x, b.y, a - CFG.maryBlastSpread, 16, 190, locked);
+      warnLine(ctx, b.x, b.y, a + CFG.maryBlastSpread, 16, 190, locked);
+      if (!locked) warnLine(ctx, b.x, b.y, a, 30, 190, false);
+    } else if (b.attack === 'spiral') {
+      for (let arm = 0; arm < CFG.marySpiralArms; arm++) warnLine(ctx, b.x, b.y, b.angle + (arm * Math.PI * 2) / CFG.marySpiralArms, 16, 120, locked);
+      // and an arc showing which way she will spin
+      for (let i = 1; i <= 4; i++) {
+        const a = b.angle + b.spin * i * 0.28, r = 36;
+        ctx.fillStyle = locked ? PAL.o : PAL.r;
+        ctx.fillRect(Math.round(b.x + Math.cos(a) * r), Math.round(b.y - 3 + Math.sin(a) * r), 2, 2);
+      }
+    } else {
+      for (let i = 0; i < CFG.maryRingBalls; i++) warnLine(ctx, b.x, b.y, b.angle + (i * Math.PI * 2) / CFG.maryRingBalls, 22, 50, locked);
     }
   }
+  // her: rocking from foot to foot while she rests; planted otherwise (with a small shake as she fires)
+  const attacking = b.state === 'attack';
+  blitMary(ctx, spr, b, { moving: b.state === 'rest', flash: b.flash > 0, dx: attacking ? Math.round(Math.sin(time * 90)) : 0 });
+  if (b.state === 'aim') {
+    drawSnowball(ctx, b.x + b.face * 8, top - 6 - (Math.floor(time * 8) % 2), true);   // a snowball held up
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(Math.round(b.x) - 1, top - 20, 3, 5);
+    ctx.fillRect(Math.round(b.x) - 1, top - 14, 3, 2);                                   // "!" telegraph
+  } else if (b.state === 'rest') drawDizzyStars(ctx, Math.round(b.x), top, time);
 }
 
 // Frosty. Standing (arriving, aiming, resting) he is the snowman; rolling he is a big ball with his
@@ -319,13 +387,7 @@ function drawMary(ctx, spr, m) {
 /** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Frosty} b @param {number} time */
 function drawFrosty(ctx, spr, b, time) {
   const cx = Math.round(b.x), by = Math.round(b.y), f = spr.frosty;
-  if (b.state === 'aim') {
-    const len = CFG.frostyRollDistance;
-    for (let d = 14; d < len; d += 9) {
-      ctx.fillStyle = b.locked ? PAL.o : PAL.r;
-      ctx.fillRect(Math.round(b.x + b.dx * d), Math.round(b.y - 3 + b.dy * d), b.locked ? 3 : 2, b.locked ? 3 : 2);
-    }
-  }
+  if (b.state === 'aim') warnLine(ctx, b.x, b.y, Math.atan2(b.dy, b.dx), 14, CFG.frostyRollDistance, b.locked);
   if (b.state === 'roll') {
     const r = Math.round(b.r), cy = by - r;
     disc(ctx, cx, cy, r + 1, PAL.N);
@@ -371,14 +433,7 @@ function drawFrosty(ctx, spr, b, time) {
     ctx.fillStyle = PAL.r;
     ctx.fillRect(cx - 1, top - 9, 3, 5);
     ctx.fillRect(cx - 1, top - 3, 3, 2);                        // "!" telegraph
-  } else if (b.state === 'rest') {
-    for (let i = 0; i < 3; i++) {                               // dizzy stars
-      const a = time * 5 + i * 2.094;
-      const sx = Math.round(cx + Math.cos(a) * 11), sy = Math.round(top - 1 + Math.sin(a) * 3);
-      ctx.fillStyle = PAL.y;
-      ctx.fillRect(sx - 1, sy, 3, 1); ctx.fillRect(sx, sy - 1, 1, 3);
-    }
-  }
+  } else if (b.state === 'rest') drawDizzyStars(ctx, cx, top, time);
 }
 
 // A snowball: a white blob with a dark edge, so it shows on snow. `big` is the larger kind.
@@ -513,13 +568,21 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   for (const ar of world.archers) {
     items.push({ y: ar.y, draw: () => { shadow(ctx, ar.x, ar.y - 1); drawArcher(ctx, spr, ar); } });
   }
-  for (const m of world.maries) {
-    items.push({ y: m.y, draw: () => { shadow(ctx, m.x, m.y - 1, m.state === 'move' ? 7 : 12); drawMary(ctx, spr, m); } });
-  }
   const boss = world.boss;
   if (boss) {
-    const rolling = boss.state === 'roll';
-    items.push({ y: boss.y, draw: () => { shadow(ctx, boss.x, boss.y - 1, rolling ? 24 : 20); drawFrosty(ctx, spr, boss, world.time); } });
+    items.push({
+      y: boss.y,
+      draw: () => {
+        if (boss.kind === 'mary') {
+          const dug = boss.state === 'rise' || boss.state === 'split';
+          shadow(ctx, boss.x, boss.y - 1, dug ? 30 : 17);
+          drawMary(ctx, spr, boss, world.time);
+        } else {
+          shadow(ctx, boss.x, boss.y - 1, boss.state === 'roll' ? 24 : 20);
+          drawFrosty(ctx, spr, boss, world.time);
+        }
+      },
+    });
   }
   for (const c of world.shower) {
     items.push({
@@ -612,7 +675,7 @@ export function drawHud(ctx, world, spr, score) {
   const boss = world.boss;
   if (boss && boss.state !== 'dying') {
     const bw = 200, bx = Math.round((W - bw) / 2), by = H - 16;
-    drawText(ctx, 'FROSTY', W / 2, by - 12, PAL.w, { align: 'center' });
+    drawText(ctx, boss.kind.toUpperCase(), W / 2, by - 12, PAL.w, { align: 'center' });
     ctx.fillStyle = PAL.k;
     ctx.fillRect(bx - 1, by - 1, bw + 2, 10);
     ctx.fillStyle = PAL.D;

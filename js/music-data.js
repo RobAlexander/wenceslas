@@ -116,6 +116,38 @@ export const STINGERS = {
       { instrument: 'bell', ch: 0, shift: 24, gain: 0.95, minVel: 95 },
     ],
   },
+
+  // Mary arrives (mary.mid): a chromatic climb that creeps up from E, then long low notes. Voiced like
+  // Frosty's: bass as written, strings an octave up, and the bell on the loudest notes.
+  maryArrive: {
+    bpm: 113,
+    notes: [
+      [40, 0, 0.74, 100],
+      [41, 0.75, 0.24, 90],
+      [42, 1, 0.24, 85],
+      [43, 1.25, 0.24, 85],
+      [44, 1.5, 0.115, 85],
+      [43, 1.625, 0.115, 85],
+      [42, 1.75, 0.24, 85],
+      [44, 2, 0.99, 100],
+      [45, 3, 0.99, 100],
+      [42, 4, 0.99, 95],
+      [42, 5, 0.99, 90],
+      [41, 7, 0.74, 95],
+      [45, 8, 0.24, 90],
+      [40, 8.25, 0.24, 85],
+      [38, 8.5, 0.24, 85],
+      [41, 8.75, 0.24, 85],
+      [45, 9, 0.49, 95],
+      [44, 9.5, 0.24, 85],
+      [46, 9.75, 0.24, 85],
+    ],
+    voices: [
+      { instrument: 'strings', ch: 1, shift: 12, gain: 2.6 },
+      { instrument: 'bass', ch: 2, gain: 2.4 },
+      { instrument: 'bell', ch: 0, shift: 24, gain: 0.95, minVel: 95 },
+    ],
+  },
 };
 
 // The boss theme, for Frosty. It grows out of the arrival stinger: that figure (A, D, F#, Bb, C, Ab, Bb, C,

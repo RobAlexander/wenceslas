@@ -78,11 +78,7 @@ export const CURVES = {
   },
   boss: {
     everyNights: 3,            // every this-many nights ends with a boss fight (3, 6, 9, 12)
-  },
-  mary: {
-    chance: 0.3,               // the chance Mary turns up on a given night: 0 is never, 1 is every night. Any night.
-    earliest: 20,              // she rises from the ground no sooner than this many seconds into the night...
-    latest: 60,                // ...and no later than this
+    maryEvery: 2,              // every this-many-th boss is Mary instead of Frosty (2: the 2nd and 4th, nights 6 and 12). 0 for never.
   },
 };
 
@@ -155,18 +151,45 @@ export const CFG = {
   arrowDamage: 1,
   arrowTreeBlock: 2,        // pixels beyond a tree's trunk at which it stops an arrow
 
-  // ---- Mary: rises out of an ice block, follows Wenceslas slowly and throws snowballs ----
-  maryHp: 3,                // sword hits to kill her
-  maryAppearDistance: 120,  // her ice block rises at least this far from Wenceslas
-  maryRise: 1.4,            // seconds the ice block takes to rise (she can't be hurt yet)
-  marySplit: 0.8,           // seconds it takes to split open (still can't be hurt)
-  marySpeed: 26,            // walking after him. Keep this well under kingSpeed (85).
-  maryStopDistance: 45,     // she stops walking this close to him, and keeps throwing
-  maryRange: 200,           // she throws only when he is within this
-  maryWindup: 0.35,         // seconds the snowball is held up before it is thrown (a hit spoils it)
-  maryCooldown: 1.8,        // between one throw and starting the next
-  marySpread: 0.12,         // random aiming error, radians either side
-  snowballSpeed: 120,       // slower than an arrow, so it can be dodged
+  // ---- Mary, the second boss ----
+  // Her ice block rises out of the ground and splits, and she cycles: warning lines (aim), one of three
+  // attacks (a shotgun blast of snowballs, a spiral while she spins, a ring that bursts outward), then a rest,
+  // which is the only time she can be hurt. She trudges toward Wenceslas while she rests. When she is beaten
+  // she is frozen back into a block, which sinks into the ground. Each later appearance is a little tougher.
+  maryHp: 12,               // sword hits to kill her, the first time
+  maryHpStep: 1,            // more health each later time
+  maryRadius: 9,            // how big she is, for the sword
+  maryRise: 2.4,            // seconds her ice block takes to rise (she can't be hurt yet)
+  marySplit: 1.3,           // seconds it takes to split open (still can't be hurt). Her arrival stinger is 5.3 s: rise + split + the
+                            // first warning (maryTelegraph) is meant to come out about as long, so the boss theme starts as she first attacks.
+  maryTelegraph: 1.0,       // seconds the warning lines show before an attack
+  maryTelegraphStep: 0.05,  // shorter by this much each later time
+  maryLockTime: 0.3,        // the blast stops following Wenceslas this long before it fires
+  maryRest: 1.8,            // seconds she rests after an attack: the time to hit her
+  maryRestStep: 0.1,        // shorter by this much each later time
+  marySpeed: 26,            // trudging toward Wenceslas while she rests. Keep this well under kingSpeed (85).
+  maryStopDistance: 55,     // she stops walking this close to him
+  // the blast: a wide fan of snowballs, fired as a volley or two
+  maryBlastBalls: 9,        // snowballs in a volley
+  maryBlastSpread: 0.55,    // radians either side of the aim: the fan is twice this wide (0.55 is about 63 degrees each way)
+  maryBlastSpeed: 150,
+  maryBlastVolleys: 2,
+  maryVolleyGap: 0.4,       // seconds between volleys
+  // the spiral: she stands and spins, firing a snowball every interval from each arm
+  marySpiralTime: 2.0,      // seconds she spins
+  marySpiralSpin: 4.2,      // radians a second
+  marySpiralInterval: 0.07,
+  marySpiralArms: 2,
+  marySpiralSpeed: 115,
+  // the ring: snowballs in every direction at once, in waves
+  maryRingBalls: 16,
+  maryRingWaves: 2,         // each wave is turned half a gap from the one before, so you must move to the gaps
+  maryRingGap: 0.55,        // seconds between waves
+  maryRingSpeed: 105,
+  maryBallSpeedStep: 8,     // all her snowballs are faster by this much each later time
+  maryDeathFreeze: 0.9,     // seconds the ice grows over her when she falls
+  maryDeathHold: 0.6,       // seconds she is held frozen
+  maryDeathSink: 1.5,       // seconds the block takes to sink into the ground; then the night ends
   snowballLife: 3.5,        // most seconds a snowball flies
   snowballDamage: 1,
 

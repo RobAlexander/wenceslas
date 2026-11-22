@@ -37,7 +37,22 @@ for (let seed = 1; seed <= 24; seed++) {
     else if (empty && w.foods.length) goal = near(w.foods);
     else if (carrying) goal = w.oldMan;
     else goal = near(wander) || w.oldMan;
-    const dx = goal.x - k.x, dy = goal.y - k.y, d = Math.hypot(dx, dy) || 1;
+    let dx = goal.x - k.x, dy = goal.y - k.y;
+    {
+      // sidestep any snowball that is about to hit
+      const d0 = Math.hypot(dx, dy) || 1;
+      dx /= d0; dy /= d0;
+      for (const a of w.arrows) {
+        if (!a.snow) continue;
+        const sp = Math.hypot(a.vx, a.vy) || 1, ux = a.vx / sp, uy = a.vy / sp;
+        const rx = k.x - a.x, ry = k.y - a.y;
+        const along = rx * ux + ry * uy, perp = -rx * uy + ry * ux;
+        if (along < 0 || along > 90 || Math.abs(perp) > 16) continue;
+        const side = perp >= 0 ? 1 : -1;
+        dx += -uy * side * 3; dy += ux * side * 3;
+      }
+    }
+    const d = Math.hypot(dx, dy) || 1;
     const rob = near(w.foes());
     const swing = rob && Math.hypot(rob.x - k.x, rob.y - k.y) < 30;
     w.update(1 / 60, { mx: dx / d, my: dy / d, ax: rob ? rob.x : goal.x, ay: rob ? rob.y - 6 : goal.y, swing });

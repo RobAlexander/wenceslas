@@ -11,7 +11,7 @@ const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
 function quietWorld(night = 3, seed = 1, hard = false) {
   const events = [];
   const w = new World({ night, hard, rng: makeRng(seed), events });
-  Object.assign(w.p, { maxRobbers: 0, maxWolves: 0, maxArchers: 0, maryChance: 0, maxFood: 0, maxWanderingPages: 0 });
+  Object.assign(w.p, { maxRobbers: 0, maxWolves: 0, maxArchers: 0, maxFood: 0, maxWanderingPages: 0 });
   w.foods = []; w.pages = []; w.line = []; w.obstacles = [];
   w.king.x = 100; w.king.y = 200;
   w.trail = [{ x: w.king.x, y: w.king.y }];
@@ -78,12 +78,12 @@ assert.equal(parTime(5, 1), parTime(5) + CFG.parBoss, 'a boss night has extra pa
 // ---- nothing else spawns during the fight
 {
   const { w } = quietWorld(3, 2);
-  Object.assign(w.p, { maxRobbers: 5, maxWolves: 5, maxArchers: 5, maryChance: 1, maxFood: 5, maxWanderingPages: 5, firstRobber: 0, firstWolf: 0, firstArcher: 0 });
+  Object.assign(w.p, { maxRobbers: 5, maxWolves: 5, maxArchers: 5, maxFood: 5, maxWanderingPages: 5, firstRobber: 0, firstWolf: 0, firstArcher: 0 });
   w.king.god = true;
   w.robberTimer = w.wolfTimer = w.archerTimer = w.foodTimer = w.pageTimer = 0;
   w.spawnFrosty();
   step(w, 5);
-  assert.equal(w.robbers.length + w.wolves.length + w.archers.length + w.maries.length + w.foods.length + w.pages.length, 0);
+  assert.equal(w.robbers.length + w.wolves.length + w.archers.length + w.foods.length + w.pages.length, 0);
 }
 
 // ---- he lumbers in from off screen, then the cycle: aim -> roll -> rest -> aim
@@ -323,11 +323,11 @@ for (const state of ['arrive', 'aim', 'rest']) {
   w.damage(w.king, { x: 0, y: 0 }, 3);
   assert.equal(w.king.hp, CFG.kingMaxHp, 'not hurt while he dies');
 }
-// ...a later boss night has a few more hits
+// ...the second time he comes (night 9; Mary has night 6) he has a few more hits
 {
-  const { w } = quietWorld(12, 15);
+  const { w } = quietWorld(9, 15);
   w.spawnFrosty();
-  assert.equal(w.boss.maxHp, frostyStats(4).hp);
+  assert.equal(w.boss.maxHp, frostyStats(2).hp);
   assert.ok(w.boss.maxHp > 10);
 }
 

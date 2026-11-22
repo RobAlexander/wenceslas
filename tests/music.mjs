@@ -287,6 +287,22 @@ assert.equal(stageFor(1), 4);
   assert.ok(bass[1].vol < bass[0].vol, 'a velocity 60 note is softer than a velocity 100 one');
 }
 
+// ---- Mary's stinger: from mary.mid
+{
+  const samples = makeSamples();
+  const st = STINGERS.maryArrive;
+  assert.equal(st.bpm, 113, 'the tempo of mary.mid');
+  assert.equal(st.notes.length, 19, 'its nineteen notes');
+  const { events, length } = stingerEvents(st, 0, samples);
+  near(length, (9.75 + 0.24) * (60 / 113), 0.02);
+  assert.ok(length > 5 && length < 5.6, 'about 5.3 s: ' + length);
+  const loud = st.notes.filter((n) => n[3] >= 95).length;
+  assert.equal(events.length, 19 + 19 + loud);
+  for (const e of events) assert.ok(Number.isFinite(e.rate) && e.rate > 0.3 && e.rate < 6 && e.vol > 0 && e.vol < 4, 'rate ' + e.rate + ' vol ' + e.vol);
+  assert.equal(stingerLength('maryArrive'), length);
+  for (const [midi] of st.notes) assert.ok(midi >= 36 && midi <= 48, 'low, like Frosty\'s: ' + midi);
+}
+
 // ---- stingers: played over the music, which ducks and then comes back
 {
   const realSetInterval = globalThis.setInterval, realClear = globalThis.clearInterval, realTimeout = globalThis.setTimeout, realClearT = globalThis.clearTimeout;

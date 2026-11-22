@@ -27,6 +27,9 @@ const EVENT_SFX = {
   arrowHit: 'hit',         // an arrow hits a page or a tree (Wenceslas has his own hurt sound)
 };
 const VARIED = new Set(['swing', 'hit', 'pickup', 'foodDrop', 'deliver']);   // a touch of pitch variation
+// Each boss's arrival stinger (see STINGERS in music-data.js); a boss with none gets the theme at once.
+/** @type {Record<string, string | undefined>} */
+const BOSS_STINGER = { frosty: 'frostyArrive', mary: 'maryArrive' };
 const MAX_AT_ONCE = 4;                                                       // per effect, so nothing machine-guns
 
 const MUTE_KEY = 'wenceslas.muted';
@@ -173,18 +176,22 @@ export function createAudio({
     /** @param {number} n */
     setNight(n) { nightSong = arrangement(n); },
 
-    // Frosty's health left, 0 to 1, or null when no boss is out (call it every frame). When he arrives the
-    // arrival stinger plays on its own and the boss theme starts as it ends; while he fights, the theme
-    // gets faster and fuller as he is hurt; when he falls the music stops, for the burst of snowballs.
-    /** @param {number | null} frac */
-    setBoss(frac) {
+    // A boss's health left, 0 to 1, or null when no boss is out (call it every frame). When a boss arrives its
+    // arrival stinger plays alone and the boss theme starts as it ends. While the boss fights, the theme gets faster and
+    // fuller as it is hurt; when it falls the music stops (for the snowball burst, or the ice), and the
+    // night-end music comes after.
+    /** @param {number | null} frac @param {string} [kind]  which boss: 'frosty' or 'mary' */
+    setBoss(frac, kind = 'frosty') {
       const was = cur.boss;
       if (frac === was) return;
       cur.boss = frac;
       if (!music) return;
       if (was === null && frac !== null) {
-        music.restart(0, BOSS_SONG, stingerLength('frostyArrive') - 0.07);
-        music.stinger('frostyArrive', false);
+        const stinger = BOSS_STINGER[kind];
+        if (stinger) {
+          music.restart(0, BOSS_SONG, stingerLength(stinger) - 0.07);
+          music.stinger(stinger, false);
+        } else music.restart(0, BOSS_SONG);
         applyPlan();
       } else if (frac === null) music.stop(0.4);
       else applyPlan();

@@ -27,7 +27,7 @@ const groupSize = (c, n) => (n < c.firstNight ? 0 : Math.min(1 + Math.floor((n -
 /** @param {number} n */
 export function nightParams(n) {
   const lv = n + NIGHT_OFFSET;
-  const { robbers, pages, foodOnGround, wolves, archers, mary, boss } = CURVES;
+  const { robbers, pages, foodOnGround, wolves, archers, boss } = CURVES;
   const lastStep = Math.max(1, NIGHTS - 1);
   return {
     foodTarget: Math.max(1, Math.round(FOOD_NEEDED.firstNight + ((FOOD_NEEDED.lastNight - FOOD_NEEDED.firstNight) * (n - 1)) / lastStep)),
@@ -46,9 +46,6 @@ export function nightParams(n) {
     archerInterval: shrinking(archers.gap, lv),
     firstArcher: shrinking(archers.firstDelay, lv),
     bossNo: n % boss.everyNights === 0 ? n / boss.everyNights : 0,   // 1 for the first boss night, 2 for the next... 0 for none
-    maryChance: mary.chance,
-    maryEarliest: mary.earliest,
-    maryLatest: Math.max(mary.earliest, mary.latest),
   };
 }
 
@@ -58,14 +55,36 @@ export function parTime(foodTarget, bossNo = 0) {
   return CFG.parBase + CFG.parPerFood * foodTarget + (bossNo > 0 ? CFG.parBoss : 0);
 }
 
-// How tough Frosty is on the nth boss night (1 is the first), each a little more than the one before.
-/** @param {number} bossNo */
-export function frostyStats(bossNo) {
-  const k = Math.max(0, bossNo - 1);
+// Which boss a boss night has, and which time that boss has come (1 the first time, 2 the next...), so each
+// repeat can be a little tougher. bossNo is from nightParams: 1 for the first boss night, 2 for the next.
+/** @param {number} bossNo @returns {{ kind: 'frosty' | 'mary', nth: number }} */
+export function bossInfo(bossNo) {
+  const every = CURVES.boss.maryEvery;
+  const marys = every > 0 ? Math.floor(bossNo / every) : 0;
+  if (every > 0 && bossNo > 0 && bossNo % every === 0) return { kind: 'mary', nth: marys };
+  return { kind: 'frosty', nth: Math.max(1, bossNo - marys) };
+}
+
+// How tough Frosty is the nth time he comes (1 is the first), each a little more than the one before.
+/** @param {number} nth */
+export function frostyStats(nth) {
+  const k = Math.max(0, nth - 1);
   return {
     hp: CFG.frostyHp + CFG.frostyHpStep * k,
     rollSpeed: CFG.frostyRollSpeed + CFG.frostyRollSpeedStep * k,
     rest: Math.max(0.6, CFG.frostyRest - CFG.frostyRestStep * k),
     telegraph: Math.max(0.5, CFG.frostyTelegraph - CFG.frostyTelegraphStep * k),
+  };
+}
+
+// The same for Mary.
+/** @param {number} nth */
+export function maryStats(nth) {
+  const k = Math.max(0, nth - 1);
+  return {
+    hp: CFG.maryHp + CFG.maryHpStep * k,
+    rest: Math.max(0.8, CFG.maryRest - CFG.maryRestStep * k),
+    telegraph: Math.max(0.5, CFG.maryTelegraph - CFG.maryTelegraphStep * k),
+    ballSpeed: CFG.maryBallSpeedStep * k,   // added to the speed of every snowball
   };
 }

@@ -1,6 +1,6 @@
 // Game logic for a single night. No drawing, no DOM.
 
-import { W, H, HUD_H, CFG, nightParams, frostyStats } from './config.js';
+import { W, H, HUD_H, CFG, nightParams, bossInfo, frostyStats, maryStats } from './config.js';
 import { FOOD_KINDS } from './sprites.js';
 
 /** @typedef {import('./rng.js').Rng} Rng */
@@ -140,12 +140,13 @@ import { FOOD_KINDS } from './sprites.js';
  * @property {boolean} entered   has come onto the screen
  */
 
-/** @typedef {'rise' | 'split' | 'move'} MaryState  rise: the ice block comes up; split: it opens; move: she walks and throws */
+/** @typedef {'rise' | 'split' | 'aim' | 'attack' | 'rest' | 'dying'} MaryState  rise: the ice block comes up; split: it opens; aim: the warning lines; attack: snowballs; rest: the only time she can be hurt; dying: frozen and sinking into the ground */
+/** @typedef {'blast' | 'spiral' | 'ring'} MaryAttack */
 
 /**
- * Mary: an ice block rises out of the ground, splits open, and she follows Wenceslas slowly,
- * throwing snowballs. She can't be hurt until she is out (state 'move').
- * @typedef {object} Mary
+ * Mary, the second boss: an ice block rises and splits, and she cycles aim (warning lines), an attack,
+ * and a rest. See the Mary section below.
+ * @typedef {object} MaryBoss
  * @property {number} id
  * @property {'mary'} kind
  * @property {number} x
@@ -154,17 +155,21 @@ import { FOOD_KINDS } from './sprites.js';
  * @property {number} hp
  * @property {number} maxHp
  * @property {MaryState} state
- * @property {number} t          time left in 'rise' or 'split'
- * @property {number} windup     time left holding a snowball up before throwing it
- * @property {number} cd         time left before she may start another throw
- * @property {number} aim        radians, toward Wenceslas while she holds a snowball up
- * @property {number} stun
+ * @property {number} t          time left in this state (not in 'attack': see clock)
+ * @property {MaryAttack} attack the attack being aimed or fired
+ * @property {MaryAttack | null} last  the attack before it, so she doesn't repeat herself
+ * @property {number} dx         the blast's direction, a unit vector
+ * @property {number} dy
+ * @property {number} angle      the spiral's starting direction, radians
+ * @property {number} spin       1 or -1: which way the spiral turns
+ * @property {boolean} locked    'aim': the blast has stopped tracking Wenceslas
+ * @property {number} clock      seconds into the attack
+ * @property {number} fired      volleys or waves fired so far
+ * @property {number} shots      snowballs fired by the spiral so far
  * @property {number} flash
- * @property {number} kbx
- * @property {number} kby
  * @property {number} walkT
  * @property {number} face
- * @property {number} side
+ * @property {{ rest: number, telegraph: number, ballSpeed: number }} stats
  */
 
 /** @typedef {'arrive' | 'aim' | 'roll' | 'rest' | 'dying'} FrostyState  arrive: lumbers in; aim: telegraph; roll: a straight rush; rest: dizzy, the only time he can be hurt; dying: bursting into snowballs */
@@ -199,7 +204,8 @@ import { FOOD_KINDS } from './sprites.js';
  * @typedef {{ id: number, x: number, y: number, vx: number, vy: number, angle: number, life: number, snow?: boolean }} Arrow
  */
 
-/** @typedef {Robber | Wolf | Archer | Mary | Frosty} Foe */
+/** @typedef {Frosty | MaryBoss} Boss */
+/** @typedef {Robber | Wolf | Archer | Boss} Foe */
 
 /**
  * @typedef {{ kind: 'tree', x: number, y: number, r: number, size: number, variant: number }
@@ -287,9 +293,7 @@ export class World {
     this.wolves = [];
     /** @type {Archer[]} */
     this.archers = [];
-    /** @type {Mary[]} */
-    this.maries = [];
-    /** @type {Frosty | null} */
+    /** @type {Boss | null} */
     this.boss = null;
     this.bossStarted = false;   // the boss fight has begun (or is over): nothing else spawns
     this.bossIntro = 0;         // seconds left to show the "boss arrives" banner
@@ -323,8 +327,6 @@ export class World {
     this.robberTimer = this.p.firstRobber;
     this.wolfTimer = this.p.firstWolf;
     this.archerTimer = this.p.firstArcher;
-    /** @type {number | null} seconds until Mary rises; Infinity if she isn't coming tonight; null until decided */
-    this.maryTimer = null;
     this.deliverTimer = 0;
 
     for (let i = 0; i < 2; i++) this.spawnFood();
@@ -468,23 +470,37 @@ export class World {
     this.emit('archer');
   }
 
-  // Mary's ice block rises somewhere on screen, well away from Wenceslas.
-  spawnMary() {
-    let pos = this.freeSpot(30, 14);
-    for (let i = 0; i < 20 && dist(pos, this.king) < CFG.maryAppearDistance; i++) pos = this.freeSpot(30, 14);
-    this.maries.push({
-      id: nextId++, kind: 'mary', x: pos.x, y: pos.y, r: 5, hp: CFG.maryHp, maxHp: CFG.maryHp,
-      state: 'rise', t: CFG.maryRise, windup: 0, cd: this.rng.range(0.4, 1), aim: 0,
-      stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1, side: this.rng() < 0.5 ? 1 : -1,
-    });
-    this.emit('maryRise');
+  // The boss of this night: Frosty or Mary, whichever bossInfo says (Frosty on a night with no boss of its
+  // own, which only the dev console does).
+  spawnBoss() {
+    if (bossInfo(this.p.bossNo).kind === 'mary') this.spawnMary();
+    else this.spawnFrosty();
   }
 
-  // Frosty lumbers in from the edge of the screen. On a night with no boss of its own (the dev
+  // Mary's ice block rises somewhere on screen, well away from Wenceslas. On a night where the boss isn't
+  // Mary (the dev console) she is the first, easiest one.
+  spawnMary() {
+    let pos = this.freeSpot(40, 18);
+    for (let i = 0; i < 30 && dist(pos, this.king) < 150; i++) pos = this.freeSpot(40, 18);
+    const info = bossInfo(this.p.bossNo);
+    const stats = maryStats(info.kind === 'mary' ? info.nth : 1);
+    const hp = CFG.maryHp + CFG.maryHpStep * Math.max(0, (info.kind === 'mary' ? info.nth : 1) - 1);
+    this.boss = {
+      id: nextId++, kind: 'mary', x: pos.x, y: pos.y, r: CFG.maryRadius, hp, maxHp: hp,
+      state: 'rise', t: CFG.maryRise, attack: 'blast', last: null, dx: 1, dy: 0, angle: 0, spin: 1,
+      locked: false, clock: 0, fired: 0, shots: 0, flash: 0, walkT: 0, face: 1, stats,
+    };
+    this.bossStarted = true;
+    this.bossIntro = 2.5;
+    this.emit('bossStart');
+  }
+
+  // Frosty lumbers in from the edge of the screen. On a night where the boss isn't Frosty (the dev
   // console) he is the first, easiest one.
   spawnFrosty() {
     const pos = this.edgeSpawnAway();
-    const stats = frostyStats(this.p.bossNo || 1);
+    const info = bossInfo(this.p.bossNo);
+    const stats = frostyStats(info.kind === 'frosty' ? info.nth : 1);
     const a = Math.atan2(this.king.y - pos.y, this.king.x - pos.x);
     this.boss = {
       id: nextId++, kind: 'frosty', x: pos.x, y: pos.y, r: CFG.frostyRadius, hp: stats.hp, maxHp: stats.hp,
@@ -496,12 +512,11 @@ export class World {
     this.emit('bossStart');
   }
 
-  // Every enemy the sword can hit. Mary can't be hit while she is still inside her ice, and Frosty
-  // only while he rests.
+  // Every enemy the sword can hit. A boss only while resting (Frosty dizzy, Mary between attacks).
   /** @returns {Foe[]} */
   foes() {
     /** @type {Foe[]} */
-    const foes = [...this.robbers, ...this.wolves, ...this.archers, ...this.maries.filter((m) => m.state === 'move')];
+    const foes = [...this.robbers, ...this.wolves, ...this.archers];
     if (this.boss && this.boss.state === 'rest') foes.push(this.boss);
     return foes;
   }
@@ -519,8 +534,7 @@ export class World {
     this.updateRobbers(dt);
     this.updateWolves(dt);
     this.updateArchers(dt);
-    this.updateMaries(dt);
-    this.updateFrosty(dt);
+    this.updateBoss(dt);
     this.updateArrows(dt);
     this.updateFood(dt);
     this.updateDelivery(dt);
@@ -604,16 +618,17 @@ export class World {
     }
   }
 
-  // A sword hit on a robber, a wolf, an archer or Mary. (nx, ny): direction of the blow.
+  // A sword hit on a robber, a wolf, an archer or a boss. (nx, ny): direction of the blow.
   /** @param {Foe} foe @param {number} nx @param {number} ny */
   hitFoe(foe, nx, ny) {
-    if (foe.kind === 'frosty') {
-      // he is too big to knock back, and stays dizzy where he is
+    if (foe.kind === 'frosty' || foe.kind === 'mary') {
+      // a boss is too big to knock back, and stays where it is
       foe.hp -= 1;
       foe.flash = 0.12;
       this.emit('hit');
-      if (foe.hp <= 0) this.killFrosty(foe);
-      else this.puff(foe.x, foe.y - 16, ['#f4f4f4', '#94b0c2'], 6);
+      if (foe.hp > 0) this.puff(foe.x, foe.y - 16, ['#f4f4f4', '#94b0c2'], 6);
+      else if (foe.kind === 'frosty') this.killFrosty(foe);
+      else this.killMary(foe);
       return;
     }
     foe.hp -= 1;
@@ -629,22 +644,16 @@ export class World {
       // a hit spoils the shot, and it doesn't go straight back to drawing
       foe.state = 'move';
       foe.cd = Math.max(foe.cd, CFG.archerCooldown * 0.5);
-    } else if (foe.kind === 'mary') {
-      // a hit spoils the throw
-      foe.windup = 0;
-      foe.cd = Math.max(foe.cd, CFG.maryCooldown * 0.5);
     } else foe.windup = 0;
     this.emit('hit');
     if (foe.hp <= 0) {
       if (foe.kind === 'wolf') this.wolves.splice(this.wolves.indexOf(foe), 1);
       else if (foe.kind === 'archer') this.archers.splice(this.archers.indexOf(foe), 1);
-      else if (foe.kind === 'mary') this.maries.splice(this.maries.indexOf(foe), 1);
       else this.robbers.splice(this.robbers.indexOf(foe), 1);
       this.kills++;
       this.emit('kill');
       const colors = foe.kind === 'wolf' ? ['#566c86', '#f4f4f4', '#333c57']
         : foe.kind === 'archer' ? ['#257179', '#38b764', '#f4f4f4']
-        : foe.kind === 'mary' ? ['#b13e53', '#f4f4f4', '#73eff7']
         : ['#5d275d', '#f4f4f4', '#333c57'];
       this.puff(foe.x, foe.y - 6, colors, 14);
       this.floatText(foe.x, foe.y - 16, '+' + CFG.pointsKill * this.pointsMul(), '#f4f4f4');
@@ -1045,76 +1054,180 @@ export class World {
     this.emit('arrowShoot');
   }
 
-  // ---------- Mary ----------
-  //
-  // An ice block rises out of the ground ('rise'), splits open ('split'), and Mary walks after
-  // Wenceslas, slowly. Whenever he is in range she holds a snowball up for a moment (the
-  // telegraph) and throws it at where he is then. Snowballs are arrows that are slower and white:
-  // see updateArrows. A hit spoils the throw, and it takes three hits to kill her.
+  // ---------- bosses ----------
 
   /** @param {number} dt */
-  updateMaries(dt) {
-    const k = this.king;
-    const decay = Math.exp(-10 * dt);
-    for (const m of [...this.maries]) {
-      m.flash -= dt;
-      m.stun -= dt;
-      m.cd -= dt;
-      m.x += m.kbx * dt; m.y += m.kby * dt;
-      m.kbx *= decay; m.kby *= decay;
-      if (m.state === 'rise' || m.state === 'split') {
-        m.t -= dt;
-        if (m.t <= 0) {
-          if (m.state === 'rise') {
-            m.state = 'split';
-            m.t = CFG.marySplit;
-            this.puff(m.x, m.y - 8, ['#73eff7', '#f4f4f4', '#41a6f6'], 10);   // the crack
-          } else {
-            m.state = 'move';
-            this.puff(m.x, m.y - 8, ['#73eff7', '#f4f4f4', '#41a6f6'], 18);   // the halves fall away
-          }
-        }
-        continue;
-      }
-      if (m.stun > 0) continue;
-
-      const d = dist(m, k);
-      m.face = k.x < m.x ? -1 : 1;
-      if (m.windup > 0) {
-        m.windup -= dt;
-        m.aim = Math.atan2(k.y - m.y, k.x - m.x);
-        if (m.windup <= 0) { this.throwSnowball(m); m.cd = CFG.maryCooldown; }
-      } else if (m.cd <= 0 && d <= CFG.maryRange) {
-        m.windup = CFG.maryWindup;
-      }
-
-      // She keeps walking while she throws, until she is close.
-      if (d > CFG.maryStopDistance) {
-        const s = this.steer(m, (k.x - m.x) / d, (k.y - m.y) / d);
-        const sp = CFG.marySpeed * this.speedMul;
-        m.x += s.x * sp * dt;
-        m.y += s.y * sp * dt;
-        m.walkT += dt;
-        if (Math.abs(s.x) > 0.1) m.face = s.x < 0 ? -1 : 1;
-      }
-      m.x = clamp(m.x, 5, W - 5);
-      m.y = clamp(m.y, HUD_H + 12, H - 3);
-    }
-    this.separate(this.maries, 8);
-    for (const m of this.maries) this.collide(m);
+  updateBoss(dt) {
+    if (this.bossIntro > 0) this.bossIntro -= dt;
+    const b = this.boss;
+    if (!b) return;
+    if (b.kind === 'frosty') this.updateFrosty(b, dt);
+    else this.updateMary(b, dt);
   }
 
-  // One snowball, aimed at Wenceslas where he stands now, with a random error.
-  /** @param {Mary} m */
-  throwSnowball(m) {
-    const k = this.king;
-    const a = Math.atan2(k.y - m.y, k.x - m.x) + this.rng.range(-CFG.marySpread, CFG.marySpread);
-    const c = Math.cos(a), s = Math.sin(a);
+  // ---------- Mary ----------
+  //
+  // An ice block rises out of the ground ('rise') and splits ('split'). Then she repeats: the warning
+  // lines ('aim'), one of three attacks ('attack'), and a rest ('rest') in which she trudges toward
+  // Wenceslas, winded: the only time she can be hurt. She never uses the same attack twice running.
+  //   blast   a wide fan of snowballs, in a volley or two; it follows Wenceslas, then locks
+  //   spiral  she plants her feet and spins, firing a snowball from each arm every moment
+  //   ring    snowballs in every direction at once, in waves, each turned half a gap from the last
+  // Snowballs are arrows that are white (see updateArrows): they hit Wenceslas or a page for 1 damage, and
+  // trees stop them. When she is beaten she is frozen back into a block that sinks into the ground.
+
+  // One snowball from Mary, at an angle.
+  /** @param {MaryBoss} b @param {number} angle @param {number} speed */
+  fireSnowball(b, angle, speed) {
+    const c = Math.cos(angle), s = Math.sin(angle);
     this.arrows.push({
-      id: nextId++, x: m.x + c * 6, y: m.y + s * 6,
-      vx: c * CFG.snowballSpeed, vy: s * CFG.snowballSpeed, angle: a, life: CFG.snowballLife, snow: true,
+      id: nextId++, x: b.x + c * 12, y: b.y + s * 12,
+      vx: c * speed, vy: s * speed, angle, life: CFG.snowballLife, snow: true,
     });
-    this.emit('arrowShoot');
+  }
+
+  // Choose the next attack and put up its warning lines.
+  /** @param {MaryBoss} b */
+  startMaryAim(b) {
+    /** @type {MaryAttack[]} */
+    const all = ['blast', 'spiral', 'ring'];
+    b.attack = this.rng.pick(all.filter((a) => a !== b.last));
+    b.last = b.attack;
+    b.state = 'aim';
+    b.t = b.stats.telegraph;
+    b.locked = false;
+    b.clock = 0; b.fired = 0; b.shots = 0;
+    const k = this.king;
+    b.angle = Math.atan2(k.y - b.y, k.x - b.x);
+    b.dx = Math.cos(b.angle); b.dy = Math.sin(b.angle);
+    b.spin = this.rng() < 0.5 ? 1 : -1;
+    b.face = b.dx < 0 ? -1 : 1;
+  }
+
+  /** @param {MaryBoss} b */
+  startMaryRest(b) {
+    b.state = 'rest';
+    b.t = b.stats.rest;
+    this.puff(b.x, b.y - 14, ['#f4f4f4', '#94b0c2'], 6);
+  }
+
+  /** @param {MaryBoss} b @param {number} dt */
+  updateMary(b, dt) {
+    const k = this.king;
+    b.flash -= dt;
+
+    if (b.state === 'rise') {
+      b.t -= dt;
+      if (b.t <= 0) {
+        b.state = 'split';
+        b.t = CFG.marySplit;
+        this.puff(b.x, b.y - 14, ['#73eff7', '#f4f4f4', '#41a6f6'], 12);   // the crack
+      }
+      return;
+    }
+    if (b.state === 'split') {
+      b.t -= dt;
+      if (b.t <= 0) {
+        this.puff(b.x, b.y - 14, ['#73eff7', '#f4f4f4', '#41a6f6'], 24);   // the halves fall away
+        this.startMaryAim(b);
+      }
+      return;
+    }
+    if (b.state === 'dying') { this.updateMaryDying(b, dt); return; }
+
+    if (b.state === 'aim') {
+      b.t -= dt;
+      if (b.attack === 'blast' && !b.locked) {
+        const d = dist(b, k) || 1;
+        b.dx = (k.x - b.x) / d;
+        b.dy = (k.y - b.y) / d;
+        b.face = b.dx < 0 ? -1 : 1;
+        if (b.t <= CFG.maryLockTime) b.locked = true;
+      }
+      if (b.t <= 0) { b.state = 'attack'; b.clock = 0; b.fired = 0; b.shots = 0; }
+    } else if (b.state === 'attack') {
+      b.clock += dt;
+      /** @param {number} base */
+      const speed = (base) => base + b.stats.ballSpeed;
+      if (b.attack === 'blast') {
+        const n = CFG.maryBlastBalls, base = Math.atan2(b.dy, b.dx);
+        while (b.fired < CFG.maryBlastVolleys && b.clock >= b.fired * CFG.maryVolleyGap) {
+          for (let i = 0; i < n; i++) {
+            const a = base + (n > 1 ? -CFG.maryBlastSpread + (2 * CFG.maryBlastSpread * i) / (n - 1) : 0);
+            this.fireSnowball(b, a, speed(CFG.maryBlastSpeed) * (1 + this.rng.range(-0.06, 0.06)));
+          }
+          this.emit('arrowShoot');
+          b.fired++;
+        }
+        if (b.clock >= (CFG.maryBlastVolleys - 1) * CFG.maryVolleyGap + 0.4) this.startMaryRest(b);
+      } else if (b.attack === 'spiral') {
+        const live = Math.min(b.clock, CFG.marySpiralTime);
+        while (b.shots * CFG.marySpiralInterval <= live) {
+          const a = b.angle + b.spin * CFG.marySpiralSpin * b.shots * CFG.marySpiralInterval;
+          for (let arm = 0; arm < CFG.marySpiralArms; arm++) this.fireSnowball(b, a + (arm * TAU) / CFG.marySpiralArms, speed(CFG.marySpiralSpeed));
+          if (b.shots % 4 === 0) this.emit('arrowShoot');
+          b.shots++;
+        }
+        b.face = Math.cos(b.angle + b.spin * CFG.marySpiralSpin * live) < 0 ? -1 : 1;   // she turns as she spins
+        if (b.clock >= CFG.marySpiralTime + 0.3) this.startMaryRest(b);
+      } else {
+        const n = CFG.maryRingBalls;
+        while (b.fired < CFG.maryRingWaves && b.clock >= b.fired * CFG.maryRingGap) {
+          for (let i = 0; i < n; i++) this.fireSnowball(b, b.angle + ((i + 0.5 * (b.fired % 2)) * TAU) / n, speed(CFG.maryRingSpeed));
+          this.emit('arrowShoot');
+          b.fired++;
+        }
+        if (b.clock >= (CFG.maryRingWaves - 1) * CFG.maryRingGap + 0.5) this.startMaryRest(b);
+      }
+    } else {
+      // resting: she trudges toward Wenceslas, winded, and can be hit
+      b.t -= dt;
+      const d = dist(b, k);
+      if (d > CFG.maryStopDistance) {
+        const s = this.steer(b, (k.x - b.x) / d, (k.y - b.y) / d);
+        const sp = CFG.marySpeed * this.speedMul;
+        b.x += s.x * sp * dt;
+        b.y += s.y * sp * dt;
+        b.walkT += dt;
+        if (Math.abs(s.x) > 0.1) b.face = s.x < 0 ? -1 : 1;
+      }
+      if (b.t <= 0) this.startMaryAim(b);
+    }
+    this.collide(b);
+    b.x = clamp(b.x, b.r + 4, W - b.r - 4);
+    b.y = clamp(b.y, HUD_H + 16, H - 3);
+  }
+
+  // Mary is beaten: ice grows over her, holds, and the block sinks into the ground; then the night ends.
+  // As with Frosty the points are hers at once and nothing can hurt Wenceslas meanwhile.
+  /** @param {MaryBoss} b */
+  killMary(b) {
+    b.state = 'dying';
+    b.t = CFG.maryDeathFreeze + CFG.maryDeathHold + CFG.maryDeathSink;
+    b.fired = 0;
+    this.victory = true;
+    this.arrows.length = 0;
+    this.kills++;
+    this.bonus += CFG.pointsBoss;
+    this.emit('kill');
+    this.floatText(b.x, b.y - 46, '+' + (CFG.pointsKill + CFG.pointsBoss) * this.pointsMul(), '#ffcd75');
+  }
+
+  /** @param {MaryBoss} b @param {number} dt */
+  updateMaryDying(b, dt) {
+    b.t -= dt;
+    const gone = CFG.maryDeathHold + CFG.maryDeathSink;   // time left when the ice has finished growing
+    if (b.fired === 0 && b.t <= gone) {
+      b.fired = 1;
+      this.emit('hit');                                                  // the ice closes over her
+      this.puff(b.x, b.y - 18, ['#73eff7', '#f4f4f4', '#41a6f6'], 18);
+    }
+    if (b.t < CFG.maryDeathSink && this.rng() < 0.7) this.puff(b.x + this.rng.range(-12, 12), b.y - 1, ['#f4f4f4', '#94b0c2'], 1);   // snow thrown up as it sinks
+    if (b.t <= 0) {
+      this.boss = null;
+      this.done = true;
+      this.emit('nightComplete');
+    }
   }
 
   // ---------- Frosty ----------
@@ -1145,11 +1258,8 @@ export class World {
     if (impact) this.emit('frostyCrash');
   }
 
-  /** @param {number} dt */
-  updateFrosty(dt) {
-    if (this.bossIntro > 0) this.bossIntro -= dt;
-    const b = this.boss;
-    if (!b) return;
+  /** @param {Frosty} b @param {number} dt */
+  updateFrosty(b, dt) {
     const k = this.king;
     b.flash -= dt;
     if (b.state === 'dying') { this.updateDying(b, dt); return; }
@@ -1349,7 +1459,7 @@ export class World {
     this.puff(om.x, om.y - 10, ['#ffcd75', '#f4f4f4'], 6);
     if (this.delivered >= this.p.foodTarget) {
       // A boss night is not over until the boss is.
-      if (this.p.bossNo > 0) this.spawnFrosty();
+      if (this.p.bossNo > 0) this.spawnBoss();
       else { this.done = true; this.emit('nightComplete'); }
     }
   }
@@ -1381,13 +1491,6 @@ export class World {
         if (this.wolves.length < p.maxWolves) this.spawnWolf();
         this.wolfTimer = p.wolfInterval * this.rng.range(0.7, 1.3);
       }
-    }
-    // Mary: whether she comes tonight is decided once, at the start, and then she comes once.
-    if (this.maryTimer === null) {
-      this.maryTimer = this.rng() < p.maryChance ? this.rng.range(p.maryEarliest, p.maryLatest) : Infinity;
-    } else if (this.maryTimer !== Infinity) {
-      this.maryTimer -= dt;
-      if (this.maryTimer <= 0) { this.spawnMary(); this.maryTimer = Infinity; }
     }
     if (p.maxArchers > 0) {
       this.archerTimer -= dt;

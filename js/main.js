@@ -237,7 +237,7 @@ const inPlay = () => {
 };
 /** @type {Record<string, (w: World) => void>} */
 const SPAWN = {
-  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => w.spawnMary(), frosty: (w) => { if (!w.boss) w.spawnFrosty(); },
+  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => { if (!w.boss) w.spawnMary(); }, frosty: (w) => { if (!w.boss) w.spawnFrosty(); },
   page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
 };
 const devConsole = createConsole({
@@ -273,7 +273,7 @@ const devConsole = createConsole({
       help: 'REMOVE EVERY ENEMY AND ARROW (NO POINTS)',
       run: () => {
         const w = inPlay(), n = w.foes().length;
-        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.maries.length = 0; w.arrows.length = 0;
+        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.arrows.length = 0;
         return 'REMOVED ' + n;
       },
     },
@@ -396,8 +396,11 @@ function draw() {
     if (game.night === ARCHERS_FROM) lines.push(['BEWARE: ARCHERS SHOOT AT YOU!', PAL.o]);
     drawPanel(ctx, lines);
   }
-  if (game.state === 'play' && w.bossIntro > 0) {
-    drawPanel(ctx, [['FROSTY!', PAL.o, 2], null, 'HE ROLLS. HIT HIM WHEN HE STOPS.']);
+  if (game.state === 'play' && w.bossIntro > 0 && w.boss) {
+    // a short banner when a boss arrives: who, and what to do about them
+    drawPanel(ctx, w.boss.kind === 'mary'
+      ? [['MARY!', PAL.o, 2], null, 'DODGE THE SNOWBALLS. HIT HER WHEN SHE RESTS.']
+      : [['FROSTY!', PAL.o, 2], null, 'HE ROLLS. HIT HIM WHEN HE STOPS.']);
   }
   if (s) s.draw(ctx);
   touch.draw(ctx, w);
@@ -431,7 +434,7 @@ function frame() {
   audio.handle(game.events);
   if (game.state === 'play') audio.setProgress(Math.min(1, game.world.delivered / game.world.p.foodTarget));
   const boss = game.world.boss;
-  audio.setBoss((game.state === 'play' || game.state === 'paused') && boss && boss.state !== 'dying' ? boss.hp / boss.maxHp : null);
+  audio.setBoss((game.state === 'play' || game.state === 'paused') && boss && boss.state !== 'dying' ? boss.hp / boss.maxHp : null, boss ? boss.kind : 'frosty');
   game.events.length = 0;
   draw();
   screenCtx.drawImage(buffer, 0, 0, canvas.width, canvas.height);

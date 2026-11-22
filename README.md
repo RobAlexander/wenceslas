@@ -85,7 +85,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
   Stages change only at phrase boundaries, and without progress the music keeps looping at its current stage.
 - **Stingers and the boss theme:** a stinger is a short phrase played once over the music (`STINGERS` in
   `js/music-data.js`), made from a MIDI file with `node tools/midi-to-stinger.mjs file.mid`. Frosty's arrival stinger
-  comes from `frosty-arrive.mid`. When he arrives the night's music cuts, the stinger plays alone, and the boss theme
+  comes from `frosty-arrive.mid` and Mary's from `mary.mid`. When he arrives the night's music cuts, the stinger plays alone, and the boss theme
   (`BOSS_SONG`) begins just as it ends. The theme is built from the stinger's figure (its first phrase is those same
   eleven notes, an octave up) at the stinger's tempo, and it follows his health: stage 0 at the start, stage 1 (faster,
   with a choir) after he has lost a third of his health, stage 2 (faster again, with a bell) after two thirds. When he
@@ -104,7 +104,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
 - `tests/frosty.mjs`: boss nights and Frosty (which nights, the telegraph and its lock, rolling, resting, only hurtable while dizzy, ten hits to kill, scaling).
-- `tests/mary.mjs`: Mary (the odds of her coming, the ice block rising and splitting, three hits to kill, walking slowly, snowballs behaving like arrows).
+- `tests/mary.mjs`: the boss Mary (which nights, the ice rising and splitting, the three attacks and their warnings, only hurtable while resting, the freeze-and-sink ending, scaling).
 - `tests/sword.mjs`: the sword's real reach against the arc that's drawn. `tests/tuning.mjs`: sanity checks on every number in `js/tuning.js`.
 - `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, name entry, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
 - `tests/gamepad.mjs`: unit tests for the gamepad module with a fake pad (deadzones, press-only swings, menu repeat).
@@ -156,18 +156,9 @@ Sound starts at the first key press or click, because browsers don't allow it so
   archers back away between shots, but at 34 pixels a second to Wenceslas's 85, so he can run them down; one hit kills.
   Arrows reuse the sword-swing and hit sounds (archers have no sound of their own yet). The numbers are in
   `js/tuning.js` (`archer*` and `arrow*`).
-- Mary can turn up on any night, from night 1: there is a 30% chance of her on each (`CURVES.mary.chance`), decided at the start
-  of the night, and she comes at most once, 20 to 60 seconds in. An ice block rises out of the ground at least 120 pixels from
-  Wenceslas (1.4 s), splits open (0.8 s), and Mary steps out in a close-fitting Santa suit. She can't be hurt while she is in
-  the ice. She walks after Wenceslas at 26 pixels a second (he walks at 85) and stops about 45 pixels away. Within 200 pixels of
-  him she holds a snowball up for 0.35 s, then throws it at where he is then, with a little random error, every 1.8 s. A snowball
-  is an arrow that is slower (120 pixels a second to 190) and does 1 damage; it hits the first of Wenceslas or a page it reaches,
-  trees stop it and rocks and walls don't. It takes three sword hits to kill her, for the same points as any other enemy, and a hit
-  spoils the throw she was winding up. Her hit points show as three small pips above her once she's hurt. She has no sounds of her
-  own yet (throws and hits reuse the sword-swing and hit sounds). She isn't mentioned on the How to play screen or in the night
-  banner, so players find her by surprise. The numbers are in `js/tuning.js` (`CURVES.mary`, `mary*` and `snowball*`).
-
-- Every third night (3, 6, 9, 12) ends with a boss, Frosty, a giant snowman. Delivering the last food doesn't end the night: he
+- Every third night (3, 6, 9, 12) ends with a boss: Frosty on nights 3 and 9, Mary on 6 and 12 (`CURVES.boss.maryEvery`), each
+  a little tougher the second time. Delivering the last food doesn't end the night: the boss comes, and nothing else spawns
+  while they are out (what is already there stays). Frosty, a giant snowman: he
   lumbers in from the edge of the screen, and nothing else spawns while he's out (what's already there stays). He repeats: lean
   back and shake for 1 s with a red "!" (a line of dots on the ground shows where the roll will go; it follows Wenceslas, then
   locks 0.3 s before the roll, so a late sidestep works), roll in a straight line at 210 px/s for up to 300 px, then sit dizzy for
@@ -182,6 +173,21 @@ Sound starts at the first key press or click, because browsers don't allow it so
   groaning warning as he starts to aim (`frostyWarn`), a rumble as he rolls (`frostyRoll`) and a crash when a roll ends in
   a tree, rock, wall or the edge of the screen (`frostyCrash`); his hits and defeat reuse the hit and kill sounds. His music
   is described under Sound and music. The numbers are in `js/tuning.js` (`CURVES.boss` and `frosty*`).
+- Mary, the second boss (nights 6 and 12), is the Mary in the close-fitting Santa suit at twice the size. Her ice block rises at
+  least 150 pixels from Wenceslas (2.4 s) and splits open (1.3 s); she can't be hurt until she is out. Then she repeats: **warning
+  lines** (1 s, shorter later; a red "!" and a raised snowball), one of three **attacks**, and a **rest**, never the same attack
+  twice running. A *blast* is a wide fan of 9 snowballs, twice, 0.4 s apart: the fan's edges show on the ground, follow Wenceslas
+  and lock 0.3 s before it fires. A *spiral* has her plant her feet and spin for 2 s, firing from two arms (spokes and a
+  turn-direction arc show first). A *ring* sends 16 snowballs outward in two waves, the second turned half a gap from the first,
+  so you have to find the gaps (ticks on the ground show the first wave). Snowballs are arrows that are white: slower than an
+  arrow, 1 damage, they hit the first of Wenceslas or a page, trees stop them and rocks and walls don't. After each attack she rests
+  for 1.8 s, trudging toward Wenceslas at 26 pixels a second (stopping 55 pixels away) with stars round her head: that is the only
+  time she can be hurt, and it is room for 3 or 4 swings. It takes 12 hits (13 on night 12, with faster snowballs, a 0.1 s shorter
+  rest and a 0.05 s shorter warning). When she falls she is frozen: ice grows over her (0.9 s), holds (0.6 s), and the block sinks
+  into the ground (1.5 s); only then does the night end. As with Frosty the 200-point bonus is awarded as she falls, the night clock
+  stops and nothing can hurt Wenceslas. Her arrival stinger (`mary.mid`, 5.3 s) plays alone as the ice rises, and the boss theme starts as it ends; the entrance (rise, split and the first warning) is timed to come out about as long, so the theme arrives as she first attacks (`maryRise` and `marySplit` set that). She has no sounds of
+  her own yet (her throws reuse the sword-swing sound and her hits the hit sound), and she isn't on the How to play screen. The
+  numbers are in `js/tuning.js` (`mary*` and `snowball*`).
 
 ## Licence
 

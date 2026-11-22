@@ -247,6 +247,40 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   assert.equal(m.running, true, 'quitting mid-fight does not leave silence');
   assert.equal(m.song.phrases.length, 8);
 }
+// ---- Mary's arrival: her stinger plays alone and the boss theme starts as it ends
+{
+  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { stingerLength } = await import('../js/music.js');
+  const { audio, log } = await setup();
+  audio.unlock(); await tick();
+  audio.setNight(6);
+  audio.onState('play', 'title');
+  const m = audio.music;
+  const before = log.started.length;
+  audio.setBoss(1, 'mary');
+  assert.equal(m.song, BOSS_SONG, 'the boss theme plays for her too');
+  assert.ok(log.started.length - before > 30, 'her stinger is played: ' + (log.started.length - before));
+  const notes = log.started.length;
+  log.ctx.currentTime = 4; m.pump();
+  assert.equal(log.started.length, notes, 'the theme holds back while the stinger plays');
+  log.ctx.currentTime = stingerLength('maryArrive') + 0.1; m.pump();
+  assert.ok(log.started.length > notes, 'and starts as it ends');
+  audio.setBoss(0.4, 'mary');
+  assert.equal(m.pendingStage, 1, 'and follows her health like his');
+  audio.setBoss(null, 'mary');
+  assert.equal(m.running, false, 'it stops when she falls');
+}
+// ...and a boss with no stinger gets the theme at once
+{
+  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { audio, log } = await setup();
+  audio.unlock(); await tick();
+  audio.onState('play', 'title');
+  const before = log.started.length;
+  audio.setBoss(1, 'nobody');
+  assert.equal(audio.music.song, BOSS_SONG);
+  assert.ok(log.started.length - before > 10, 'the first phrase is scheduled at once: ' + (log.started.length - before));
+}
 assert.equal(musicPlan('play', 1, 0.5).stage, 1, 'boss plan: half his health gone is stage 1');
 assert.equal(musicPlan('play', 1, 0.9).stage, 0);
 assert.equal(musicPlan('play', 1, null).stage, 4, 'no boss: the food decides');

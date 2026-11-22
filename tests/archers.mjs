@@ -14,7 +14,7 @@ const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
 function quietWorld(seed = 1, hard = false) {
   const events = [];
   const w = new World({ night: 6, hard, rng: makeRng(seed), events });
-  Object.assign(w.p, { maxRobbers: 0, maxWolves: 0, maxArchers: 0, maryChance: 0, maxFood: 0, maxWanderingPages: 0 });
+  Object.assign(w.p, { maxRobbers: 0, maxWolves: 0, maxArchers: 0, maxFood: 0, maxWanderingPages: 0 });
   w.foods = [];
   w.pages = [];
   w.line = [];

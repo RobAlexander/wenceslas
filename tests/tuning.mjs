@@ -31,6 +31,12 @@ whole(CFG.pageMaxHp, 1, 'CFG.pageMaxHp');
 whole(CFG.maryHp, 1, 'CFG.maryHp');
 whole(CFG.frostyHp, 1, 'CFG.frostyHp');
 whole(CURVES.boss.everyNights, 1, 'CURVES.boss.everyNights');
+whole(CURVES.boss.maryEvery, 0, 'CURVES.boss.maryEvery');
+whole(CFG.maryBlastBalls, 1, 'CFG.maryBlastBalls');
+whole(CFG.maryBlastVolleys, 1, 'CFG.maryBlastVolleys');
+whole(CFG.marySpiralArms, 1, 'CFG.marySpiralArms');
+whole(CFG.maryRingBalls, 2, 'CFG.maryRingBalls');
+whole(CFG.maryRingWaves, 1, 'CFG.maryRingWaves');
 for (const group of ['wolves', 'archers']) {
   whole(CURVES[group].firstNight, 1, `CURVES.${group}.firstNight`);
   whole(CURVES[group].nightsPerExtra, 1, `CURVES.${group}.nightsPerExtra`);
@@ -41,7 +47,7 @@ whole(CURVES.foodOnGround.levelsPerExtra, 1, 'CURVES.foodOnGround.levelsPerExtra
 whole(CURVES.robbers.atOnce.max, 1, 'CURVES.robbers.atOnce.max');
 
 // Fractions and angles
-for (const [path, v] of [['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel], ['CURVES.mary.chance', CURVES.mary.chance]]) {
+for (const [path, v] of [['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel]]) {
   assert.ok(v <= 1, `${path} is a fraction between 0 and 1 (it is ${v})`);
 }
 assert.ok(CFG.swingHalfArc <= Math.PI, 'CFG.swingHalfArc is in radians and can be at most 3.14 (a full half circle each side)');
@@ -57,8 +63,10 @@ assert.ok(CFG.pageFollowSpeed > CFG.kingSpeed, 'pages must be faster than Wences
 assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'archers must back away more slowly than Wenceslas walks, even in hard mode, so he can run them down');
 assert.ok(CFG.archerSpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'archers must walk more slowly than Wenceslas, even in hard mode');
 assert.ok(CFG.marySpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'Mary must walk more slowly than Wenceslas, even in hard mode');
-assert.ok(CURVES.mary.earliest <= CURVES.mary.latest, 'CURVES.mary.earliest must not be later than CURVES.mary.latest');
-assert.ok(CFG.maryStopDistance < CFG.maryRange, 'Mary stops walking closer than maryStopDistance, so it has to be less than maryRange');
+assert.ok(CFG.maryRest >= 2 * CFG.swingCooldown, 'Mary must rest long enough for at least two sword swings (swingCooldown is ' + CFG.swingCooldown + ')');
+assert.ok(CFG.maryLockTime < CFG.maryTelegraph, 'maryLockTime is the end part of her warning, so it has to be shorter than maryTelegraph');
+assert.ok(CFG.maryBlastSpread < Math.PI / 2, 'CFG.maryBlastSpread is in radians each side of the aim; over 1.57 and the fan wraps round behind her');
+assert.ok(CFG.maryDeathFreeze + CFG.maryDeathHold + CFG.maryDeathSink > 1, 'Mary\'s freeze-and-sink needs a moment, or the night ends before it can be seen');
 assert.ok(CFG.frostyRollSpeed > CFG.kingSpeed, 'Frosty must roll faster than Wenceslas walks: he is dodged, not outrun');
 assert.ok(CFG.frostyRest >= 2 * CFG.swingCooldown, 'Frosty must rest long enough for at least two sword swings (swingCooldown is ' + CFG.swingCooldown + ')');
 assert.ok(CFG.frostyLockTime < CFG.frostyTelegraph, 'frostyLockTime is the end part of the telegraph, so it has to be shorter than frostyTelegraph');
