@@ -219,6 +219,58 @@ function makeTree(variant) {
   return { img: c, w, h };
 }
 
+// A filled pixel circle, centred on (cx, cy).
+/** @param {CanvasRenderingContext2D} x @param {number} cx @param {number} cy @param {number} r @param {string} color */
+export function disc(x, cx, cy, r, color) {
+  x.fillStyle = color;
+  for (let dy = -Math.floor(r); dy <= Math.floor(r); dy++) {
+    const half = Math.round(Math.sqrt(r * r - dy * dy));
+    x.fillRect(cx - half, cy + dy, half * 2 + 1, 1);
+  }
+}
+
+// Frosty, standing: three snowballs with a top hat, coal eyes and buttons, a carrot nose, stick arms
+// and a red scarf. 29 pixels wide, 41 tall, with his feet on the bottom row.
+function makeFrosty() {
+  const w = 29, h = 41, cx = 14;
+  const { canvas: c, ctx: x } = makeCanvas(w, h);
+  // arms first, so the body goes over their ends
+  x.fillStyle = PAL.m;
+  for (let i = 0; i < 8; i++) { x.fillRect(7 - i, 24 - i, 1, 1); x.fillRect(21 + i, 24 - i, 1, 1); }
+  x.fillRect(0, 13, 1, 3); x.fillRect(2, 14, 1, 2); x.fillRect(28, 13, 1, 3); x.fillRect(26, 14, 1, 2);   // twigs
+  // the three balls: a shaded rim, then the white, then a glint
+  for (const [by, r] of /** @type {[number, number][]} */ ([[31, 10], [20, 7.5], [10, 5.5]])) {
+    disc(x, cx, by, r + 1, PAL.N);
+    disc(x, cx - 1, by - 1, r, PAL.w);
+    disc(x, cx + 2, by + 2, r - 3, '#e4ecf6');
+  }
+  // face
+  x.fillStyle = PAL.k;
+  x.fillRect(cx - 3, 8, 2, 2); x.fillRect(cx + 2, 8, 2, 2);                                  // coal eyes
+  for (const mx of [-3, -1, 1, 3]) x.fillRect(cx + mx, 13 + (Math.abs(mx) === 3 ? -1 : 0), 1, 1);   // a coal smile
+  x.fillStyle = PAL.o;
+  x.fillRect(cx, 10, 6, 2); x.fillStyle = '#d95a2b'; x.fillRect(cx + 3, 11, 3, 1);          // the carrot, pointing right
+  // scarf
+  x.fillStyle = PAL.r;
+  x.fillRect(cx - 6, 15, 13, 2); x.fillRect(cx + 3, 17, 3, 6);
+  x.fillStyle = PAL.w; x.fillRect(cx + 3, 19, 3, 1);
+  // buttons
+  x.fillStyle = PAL.k;
+  for (const by of [22, 26, 30]) x.fillRect(cx - 1, by, 2, 2);
+  // top hat
+  x.fillStyle = PAL.k;
+  x.fillRect(cx - 5, 3, 11, 1);                       // the brim
+  x.fillRect(cx - 3, -0, 7, 3);                       // the crown
+  x.fillStyle = PAL.r; x.fillRect(cx - 3, 2, 7, 1);   // the band
+  // an all-white copy, for the flash when he is hit
+  const { canvas: wc, ctx: wx } = makeCanvas(w, h);
+  wx.drawImage(c, 0, 0);
+  wx.globalCompositeOperation = 'source-in';
+  wx.fillStyle = '#ffffff';
+  wx.fillRect(0, 0, w, h);
+  return { img: c, white: wc, w, h };
+}
+
 function makeRock() {
   const rows = [
     '...wwwww....',
@@ -246,5 +298,6 @@ export function loadSprites() {
     food: Object.fromEntries(FOOD_KINDS.map((k) => [k, single(FOOD[k])])),
     trees: [makeTree(0), makeTree(1)],
     rock: makeRock(),
+    frosty: makeFrosty(),
   };
 }

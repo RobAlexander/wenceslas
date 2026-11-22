@@ -26,7 +26,14 @@ for (let seed = 1; seed <= 24; seed++) {
     const wander = w.pages.filter((p) => p.state === 'wander' && p.entered);
     const empty = w.line.some((p) => !p.food);
     const carrying = w.line.some((p) => p.food);
-    if (w.line.length < 3 && wander.length) goal = near(wander);
+    const boss = w.boss;
+    if (boss && boss.state === 'rest') goal = boss;   // he is dizzy: go and hit him
+    else if (boss) {
+      // dodge: wait to the side of where the roll will go, about half way along it, ready to run in when he stops
+      const side = Math.sign((k.x - boss.x) * -boss.dy + (k.y - boss.y) * boss.dx) || 1;
+      goal = { x: boss.x + boss.dx * 130 - boss.dy * side * 60, y: boss.y + boss.dy * 130 + boss.dx * side * 60 };
+    }
+    else if (w.line.length < 3 && wander.length) goal = near(wander);
     else if (empty && w.foods.length) goal = near(w.foods);
     else if (carrying) goal = w.oldMan;
     else goal = near(wander) || w.oldMan;

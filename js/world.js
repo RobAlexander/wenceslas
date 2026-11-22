@@ -1,6 +1,6 @@
 // Game logic for a single night. No drawing, no DOM.
 
-import { W, H, HUD_H, CFG, nightParams } from './config.js';
+import { W, H, HUD_H, CFG, nightParams, frostyStats } from './config.js';
 import { FOOD_KINDS } from './sprites.js';
 
 /** @typedef {import('./rng.js').Rng} Rng */
@@ -167,12 +167,39 @@ import { FOOD_KINDS } from './sprites.js';
  * @property {number} side
  */
 
+/** @typedef {'arrive' | 'aim' | 'roll' | 'rest' | 'dying'} FrostyState  arrive: lumbers in; aim: telegraph; roll: a straight rush; rest: dizzy, the only time he can be hurt; dying: bursting into snowballs */
+
+/**
+ * Frosty, the boss of the third night and every third night after it.
+ * @typedef {object} Frosty
+ * @property {number} id
+ * @property {'frosty'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {FrostyState} state
+ * @property {number} t          time left in 'aim', 'rest' or 'dying'
+ * @property {number} dx         where he is facing or rolling, a unit vector
+ * @property {number} dy
+ * @property {boolean} locked    'aim': has stopped tracking Wenceslas
+ * @property {number} rolled     'roll': distance covered so far
+ * @property {boolean} crashed   'rest': he got here by hitting scenery
+ * @property {number} burst     'dying': how many of the big bursts have gone off
+ * @property {number} spin       how far the ball has turned, for drawing
+ * @property {number} flash
+ * @property {number} walkT
+ * @property {number} face
+ * @property {{ rollSpeed: number, rest: number, telegraph: number }} stats
+ */
+
 /**
  * An arrow in flight, or a snowball (snow: true). x, y are on the ground plane; it is drawn raised, at body height.
  * @typedef {{ id: number, x: number, y: number, vx: number, vy: number, angle: number, life: number, snow?: boolean }} Arrow
  */
 
-/** @typedef {Robber | Wolf | Archer | Mary} Foe */
+/** @typedef {Robber | Wolf | Archer | Mary | Frosty} Foe */
 
 /**
  * @typedef {{ kind: 'tree', x: number, y: number, r: number, size: number, variant: number }
@@ -184,6 +211,8 @@ import { FOOD_KINDS } from './sprites.js';
 /** @typedef {{ x: number, y: number, r: number, bob: number }} OldMan */
 /** @typedef {{ x: number, y: number, vx: number, vy: number, life: number, color: string }} Particle */
 /** @typedef {{ x: number, y: number, text: string, color: string, life: number }} FloatText */
+/** A snowball thrown up when Frosty bursts. x, y: on the ground; z: height; big: the larger kind. Only for show.
+ * @typedef {{ x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, bounces: number, big: boolean }} Clod */
 
 const TAU = Math.PI * 2;
 /** @param {number} v @param {number} a @param {number} b */
@@ -260,6 +289,11 @@ export class World {
     this.archers = [];
     /** @type {Mary[]} */
     this.maries = [];
+    /** @type {Frosty | null} */
+    this.boss = null;
+    this.bossStarted = false;   // the boss fight has begun (or is over): nothing else spawns
+    this.bossIntro = 0;         // seconds left to show the "boss arrives" banner
+    this.bonus = 0;             // points on top of food and kills (a boss)
     /** @type {Arrow[]} arrows and snowballs */
     this.arrows = [];
     /** @type {Food[]} */
@@ -268,6 +302,9 @@ export class World {
     this.particles = [];
     /** @type {FloatText[]} */
     this.texts = [];
+    /** @type {Clod[]} */
+    this.shower = [];
+    this.victory = false;   // the boss is dying: nothing can hurt Wenceslas now
 
     /** @type {King} */
     this.king = {
@@ -443,9 +480,31 @@ export class World {
     this.emit('maryRise');
   }
 
-  // Every enemy the sword can hit. Mary can't be hit while she is still inside her ice.
+  // Frosty lumbers in from the edge of the screen. On a night with no boss of its own (the dev
+  // console) he is the first, easiest one.
+  spawnFrosty() {
+    const pos = this.edgeSpawnAway();
+    const stats = frostyStats(this.p.bossNo || 1);
+    const a = Math.atan2(this.king.y - pos.y, this.king.x - pos.x);
+    this.boss = {
+      id: nextId++, kind: 'frosty', x: pos.x, y: pos.y, r: CFG.frostyRadius, hp: stats.hp, maxHp: stats.hp,
+      state: 'arrive', t: 0, dx: Math.cos(a), dy: Math.sin(a), locked: false, rolled: 0, crashed: false, burst: 0,
+      spin: 0, flash: 0, walkT: 0, face: Math.cos(a) < 0 ? -1 : 1, stats,
+    };
+    this.bossStarted = true;
+    this.bossIntro = 2.5;
+    this.emit('bossStart');
+  }
+
+  // Every enemy the sword can hit. Mary can't be hit while she is still inside her ice, and Frosty
+  // only while he rests.
   /** @returns {Foe[]} */
-  foes() { return [...this.robbers, ...this.wolves, ...this.archers, ...this.maries.filter((m) => m.state === 'move')]; }
+  foes() {
+    /** @type {Foe[]} */
+    const foes = [...this.robbers, ...this.wolves, ...this.archers, ...this.maries.filter((m) => m.state === 'move')];
+    if (this.boss && this.boss.state === 'rest') foes.push(this.boss);
+    return foes;
+  }
 
   // ---------- update ----------
 
@@ -453,7 +512,7 @@ export class World {
   update(dt, inp) {
     this.updateFx(dt);
     if (this.done || this.dead) { this.arrows.length = 0; return; }
-    this.time += dt;
+    if (!this.victory) this.time += dt;   // the clock stops when the boss falls
     this.updateKing(dt, inp);
     this.updateTrail();
     this.updatePages(dt);
@@ -461,6 +520,7 @@ export class World {
     this.updateWolves(dt);
     this.updateArchers(dt);
     this.updateMaries(dt);
+    this.updateFrosty(dt);
     this.updateArrows(dt);
     this.updateFood(dt);
     this.updateDelivery(dt);
@@ -520,21 +580,42 @@ export class World {
   swordHits() {
     const k = this.king;
     const px = k.x, py = k.y - 8;
-    for (const rob of this.foes()) {
-      if (k.hit.has(rob.id)) continue;
+    /** @param {{ id: number, x: number, y: number, r: number }} rob  @returns {{ nx: number, ny: number } | null} */
+    const reach = (rob) => {
+      if (k.hit.has(rob.id)) return null;
       const dx = rob.x - px, dy = rob.y - 6 - py;
       const d = Math.hypot(dx, dy);
-      if (d > CFG.swingRange + rob.r + 2) continue;
+      if (d > CFG.swingRange + rob.r + 2) return null;
       const slack = d > 0 ? Math.atan2(rob.r + 2, d) : Math.PI;
-      if (Math.abs(angDiff(Math.atan2(dy, dx), k.swingAngle)) > CFG.swingHalfArc + slack) continue;
+      if (Math.abs(angDiff(Math.atan2(dy, dx), k.swingAngle)) > CFG.swingHalfArc + slack) return null;
+      return { nx: dx / (d || 1), ny: dy / (d || 1) };
+    };
+    for (const rob of this.foes()) {
+      const hit = reach(rob);
+      if (!hit) continue;
       k.hit.add(rob.id);
-      this.hitFoe(rob, dx / (d || 1), dy / (d || 1));
+      this.hitFoe(rob, hit.nx, hit.ny);
+    }
+    // Frosty shrugs off blows while he is not dizzy: a puff of snow, no damage.
+    const b = this.boss;
+    if (b && b.state !== 'rest' && b.state !== 'dying' && reach(b)) {
+      k.hit.add(b.id);
+      this.puff(b.x, b.y - 14, ['#f4f4f4', '#94b0c2'], 3);
     }
   }
 
   // A sword hit on a robber, a wolf, an archer or Mary. (nx, ny): direction of the blow.
   /** @param {Foe} foe @param {number} nx @param {number} ny */
   hitFoe(foe, nx, ny) {
+    if (foe.kind === 'frosty') {
+      // he is too big to knock back, and stays dizzy where he is
+      foe.hp -= 1;
+      foe.flash = 0.12;
+      this.emit('hit');
+      if (foe.hp <= 0) this.killFrosty(foe);
+      else this.puff(foe.x, foe.y - 16, ['#f4f4f4', '#94b0c2'], 6);
+      return;
+    }
     foe.hp -= 1;
     foe.flash = 0.12;
     foe.stun = 0.3;
@@ -719,7 +800,7 @@ export class World {
     const nx = target.x - from.x, ny = target.y - from.y, l = Math.hypot(nx, ny) || 1;
     if (target === this.king) {
       const k = this.king;
-      if (k.inv > 0 || k.god) return;   // god: dev console cheat
+      if (k.inv > 0 || k.god || this.victory) return;   // god: dev console cheat
       k.hp -= amount;
       k.inv = CFG.kingInvuln;
       k.kbx = (nx / l) * 120; k.kby = (ny / l) * 120;
@@ -1036,6 +1117,151 @@ export class World {
     this.emit('arrowShoot');
   }
 
+  // ---------- Frosty ----------
+  //
+  // The boss of every third night. When the last food is delivered he lumbers in from the edge
+  // of the screen ('arrive'), then repeats: lean back and shake (the telegraph, 'aim'), roll in a
+  // straight line ('roll'), and sit dizzy ('rest'). He can only be hurt while he rests, which is
+  // time for two or three swings. During the telegraph he follows Wenceslas, but he stops
+  // tracking a moment before the roll, so a sidestep at the last second works. A roll that
+  // reaches Wenceslas hurts him, and flattens any page it goes through; a roll that ends in a
+  // tree, rock or wall leaves Frosty dizzy for longer.
+
+  /** @param {Frosty} b */
+  startAim(b) {
+    b.state = 'aim';
+    b.t = b.stats.telegraph;
+    b.locked = false;
+    this.emit('frostyWarn');
+  }
+
+  // impact: the roll ended in a crash (into scenery or the edge of the screen), not just at the end of its distance.
+  /** @param {Frosty} b @param {boolean} crashed @param {boolean} [impact] */
+  startRest(b, crashed, impact = crashed) {
+    b.state = 'rest';
+    b.t = b.stats.rest + (crashed ? CFG.frostyCrashBonus : 0);
+    b.crashed = crashed;
+    this.puff(b.x, b.y - 8, ['#f4f4f4', '#94b0c2'], crashed ? 16 : 8);
+    if (impact) this.emit('frostyCrash');
+  }
+
+  /** @param {number} dt */
+  updateFrosty(dt) {
+    if (this.bossIntro > 0) this.bossIntro -= dt;
+    const b = this.boss;
+    if (!b) return;
+    const k = this.king;
+    b.flash -= dt;
+    if (b.state === 'dying') { this.updateDying(b, dt); return; }
+
+    if (b.state === 'arrive') {
+      b.t += dt;
+      const d = dist(b, k) || 1;
+      const s = this.steer(b, (k.x - b.x) / d, (k.y - b.y) / d);
+      const sp = CFG.frostyWalkSpeed * this.speedMul;
+      b.x += s.x * sp * dt;
+      b.y += s.y * sp * dt;
+      b.walkT += dt;
+      if (Math.abs(s.x) > 0.1) b.face = s.x < 0 ? -1 : 1;
+      const inside = b.x > 40 && b.x < W - 40 && b.y > HUD_H + 40 && b.y < H - 30;
+      if (inside || b.t > 8) this.startAim(b);   // (or he is stuck behind something: begin anyway)
+      return;
+    }
+
+    if (b.state === 'aim') {
+      b.t -= dt;
+      if (!b.locked) {
+        const d = dist(b, k) || 1;
+        b.dx = (k.x - b.x) / d;
+        b.dy = (k.y - b.y) / d;
+        b.face = b.dx < 0 ? -1 : 1;
+        if (b.t <= CFG.frostyLockTime) b.locked = true;
+      }
+      if (b.t <= 0) { b.state = 'roll'; b.rolled = 0; this.emit('frostyRoll'); }
+    } else if (b.state === 'roll') {
+      const step = b.stats.rollSpeed * this.speedMul * dt;
+      b.x += b.dx * step;
+      b.y += b.dy * step;
+      b.rolled += step;
+      b.spin += step / b.r;
+      if (this.rng() < 0.6) this.puff(b.x - b.dx * b.r, b.y - 3, ['#f4f4f4', '#94b0c2'], 1);   // a trail of snow
+      // whoever he rolls over
+      if (dist(b, k) < b.r + k.r) this.damage(k, b, CFG.frostyDamage);
+      for (const pg of [...this.pages]) if (dist(b, pg) < b.r + pg.r) this.damage(pg, b, CFG.frostyDamage);
+      // scenery stops him, and he is left reeling
+      let crashed = false;
+      for (const o of this.obstacles) {
+        const q = obsQuery(o, b.x, b.y);
+        const reach = b.r * 0.6;
+        if (q.d < reach) { b.x += q.nx * (reach - q.d); b.y += q.ny * (reach - q.d); crashed = true; }
+      }
+      const x = clamp(b.x, b.r, W - b.r), y = clamp(b.y, HUD_H + 14, H - 3);
+      const edge = x !== b.x || y !== b.y;
+      b.x = x; b.y = y;
+      if (crashed || edge || b.rolled >= CFG.frostyRollDistance) this.startRest(b, crashed, crashed || edge);
+    } else {
+      b.t -= dt;
+      if (b.t <= 0) this.startAim(b);
+    }
+    if (b.state !== 'roll') {
+      b.x = clamp(b.x, b.r, W - b.r);
+      b.y = clamp(b.y, HUD_H + 14, H - 3);
+    }
+  }
+
+  // Frosty is beaten: he starts to burst apart (see updateFrosty); the night is won when he has. The
+  // points are his at once, and nothing can hurt Wenceslas while it happens.
+  /** @param {Frosty} b */
+  killFrosty(b) {
+    b.state = 'dying';
+    b.t = CFG.frostyDeathTime;
+    b.burst = 0;
+    this.victory = true;
+    this.arrows.length = 0;
+    this.kills++;
+    this.bonus += CFG.pointsBoss;
+    this.emit('kill');
+    this.floatText(b.x, b.y - 46, '+' + (CFG.pointsKill + CFG.pointsBoss) * this.pointsMul(), '#ffcd75');
+    this.throwClods(b, 28, 1, 60, 150);
+  }
+
+  // Throw snowballs out of Frosty: n of them, from about `height` pixels up, outward at speeds from lo to hi.
+  /** @param {Frosty} b @param {number} n @param {number} fall  how far through the death he is (0 to 1) @param {number} lo @param {number} hi */
+  throwClods(b, n, fall, lo, hi) {
+    const top = Math.max(6, 40 * (1 - fall) + 6);   // he sheds from the top down, so the snowballs start lower and lower
+    for (let i = 0; i < n; i++) {
+      const a = this.rng.range(0, TAU), sp = this.rng.range(lo, hi);
+      this.shower.push({
+        x: b.x + this.rng.range(-5, 5), y: b.y + this.rng.range(-3, 3), z: this.rng.range(4, top),
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7, vz: this.rng.range(90, 270),
+        life: this.rng.range(1.6, 3.2), bounces: 0, big: this.rng() < 0.35,
+      });
+    }
+  }
+
+  // The last three seconds: he shakes and sheds snowballs from the top down, in bursts that each make
+  // a sound, until nothing of him is left. Then the night ends.
+  /** @param {Frosty} b @param {number} dt */
+  updateDying(b, dt) {
+    b.t -= dt;
+    const fall = 1 - Math.max(0, b.t) / CFG.frostyDeathTime;
+    this.throwClods(b, Math.round(this.rng.range(0, 2)), fall, 30, 110);   // a steady spray...
+    if (this.rng() < 0.5) this.puff(b.x, b.y - 20 * (1 - fall) - 4, ['#f4f4f4', '#94b0c2'], 1);
+    const bursts = [0.18, 0.4, 0.62, 0.82];                                 // ...and bigger bursts
+    while (b.burst < bursts.length && fall >= bursts[b.burst]) {
+      this.throwClods(b, 22, fall, 70, 190);
+      this.emit('hit');
+      b.burst++;
+    }
+    if (b.t <= 0) {
+      this.throwClods(b, 70, 1, 90, 230);                                   // the end: everything goes
+      this.puff(b.x, b.y - 10, ['#f4f4f4', '#94b0c2', '#ef7d57', '#1a1c2c'], 40);
+      this.boss = null;
+      this.done = true;
+      this.emit('nightComplete');
+    }
+  }
+
   // Arrows (and snowballs) fly straight until they leave the screen, hit a tree, or hit Wenceslas
   // or a page (whichever they reach first: a page standing in the way takes it).
   /** @param {number} dt */
@@ -1109,6 +1335,7 @@ export class World {
   updateDelivery(dt) {
     const om = this.oldMan;
     om.bob += dt;
+    if (this.bossStarted) return;   // the food is all in: it is the boss now
     if (dist(this.king, om) > CFG.deliverRadius) { this.deliverTimer = 0; return; }
     this.deliverTimer -= dt;
     if (this.deliverTimer > 0) return;
@@ -1121,13 +1348,15 @@ export class World {
     this.floatText(om.x, om.y - 22, '+' + CFG.pointsFood * this.pointsMul(), '#ffcd75');
     this.puff(om.x, om.y - 10, ['#ffcd75', '#f4f4f4'], 6);
     if (this.delivered >= this.p.foodTarget) {
-      this.done = true;
-      this.emit('nightComplete');
+      // A boss night is not over until the boss is.
+      if (this.p.bossNo > 0) this.spawnFrosty();
+      else { this.done = true; this.emit('nightComplete'); }
     }
   }
 
   /** @param {number} dt */
   updateSpawning(dt) {
+    if (this.bossStarted) return;   // nothing new arrives during the boss fight
     const p = this.p;
     this.pageTimer -= dt;
     const wandering = this.pages.filter((x) => x.state === 'wander').length;
@@ -1246,5 +1475,16 @@ export class World {
     this.particles = this.particles.filter((p) => p.life > 0);
     for (const t of this.texts) { t.life -= dt; t.y -= 14 * dt; }
     this.texts = this.texts.filter((t) => t.life > 0);
+    for (const c of this.shower) {
+      c.life -= dt;
+      c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt;
+      c.vz -= 420 * dt;
+      if (c.z <= 0) {
+        c.z = 0;
+        if (c.vz < -70 && c.bounces < 2) { c.vz *= -0.38; c.vx *= 0.7; c.vy *= 0.7; c.bounces++; }   // bounce, then roll to a stop
+        else { c.vz = 0; c.vx *= Math.exp(-7 * dt); c.vy *= Math.exp(-7 * dt); }
+      }
+    }
+    this.shower = this.shower.filter((c) => c.life > 0);
   }
 }

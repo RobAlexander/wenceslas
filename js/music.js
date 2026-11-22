@@ -9,10 +9,11 @@
 // The game picks a stage from its progress; the Sequencer only changes stage at a phrase
 // boundary, so the music always changes on the beat.
 
-import { SONG } from './music-data.js';
+import { SONG, STINGERS } from './music-data.js';
 
 /** @typedef {typeof SONG} Song */
 /** @typedef {import('./music-data.js').Instrument} Instrument */
+/** @typedef {import('./music-data.js').Stinger} Stinger */
 /** @typedef {'K' | 'S' | 'H'} Perc  kick, snare, hi-hat */
 /** @typedef {'bell' | 'choir' | 'strings' | 'bass' | 'pluck' | 'flute'} Pitched */
 /** @typedef {Pitched | Perc} SampleName */
@@ -33,6 +34,7 @@ import { SONG } from './music-data.js';
  * @property {Cell[][]} parts                    one list of cells per channel
  * @property {number[]} voices                   1 if that channel plays
  * @property {(Instrument | null)[]} instruments
+ * @property {number[]} [gains]                    a volume multiplier per channel
  */
 
 /**
@@ -165,7 +167,7 @@ export class Sequencer {
     this.lastId = id;
     return {
       id, stage: this.stage, bpm: st.bpm, rows: this.song.rowsPerPhrase,
-      parts: this.parsed[id], voices: st.voices, instruments: st.instruments,
+      parts: this.parsed[id], voices: st.voices, instruments: st.instruments, gains: st.gains,
     };
   }
 }
@@ -328,11 +330,43 @@ export function phraseEvents(phrase, t0, samples) {
       const dur = (e - r) * rowDur;
       events.push({
         ch, sample: name, when, duration: v.ring ? Math.min(dur + 0.25, 1.4) : dur,
-        rate: midiToFreq(cell.midi) / samples[name].baseFreq, vol: v.gain, voicing: v,
+        rate: midiToFreq(cell.midi) / samples[name].baseFreq, vol: v.gain * (phrase.gains?.[ch] ?? 1), voicing: v,
       });
     }
   }
   return { events, length: phrase.rows * rowDur };
+}
+
+// How long a stinger lasts, in seconds (0 if there is none of that name).
+/** @param {string} name */
+export function stingerLength(name) {
+  const st = STINGERS[name];
+  if (!st) return 0;
+  return Math.max(0, ...st.notes.map(([, at, len]) => at + len)) * (60 / st.bpm);
+}
+
+// Every note of a stinger, as plain data like phraseEvents. A note louder than a voice's minVel is
+// played by that voice; a quiet note is softer. `length` is when the last note ends, in seconds.
+/** @param {Stinger} stinger @param {number} t0 @param {Record<SampleName, Sample>} samples */
+export function stingerEvents(stinger, t0, samples) {
+  const beat = 60 / stinger.bpm;
+  /** @type {NoteEvent[]} */
+  const events = [];
+  let end = 0;
+  for (const [midi, at, len, vel] of stinger.notes) {
+    end = Math.max(end, (at + len) * beat);
+    for (const v of stinger.voices) {
+      if (vel < (v.minVel ?? 0) || v.instrument === 'perc') continue;
+      const voicing = VOICING[v.instrument];
+      const dur = len * beat;
+      events.push({
+        ch: v.ch, sample: v.instrument, when: t0 + at * beat, duration: voicing.ring ? Math.min(dur + 0.25, 1.4) : dur,
+        rate: midiToFreq(midi + (v.shift ?? 0)) / samples[v.instrument].baseFreq,
+        vol: voicing.gain * (v.gain ?? 1) * (0.4 + (0.6 * vel) / 127), voicing,
+      });
+    }
+  }
+  return { events, length: end };
 }
 
 // ---------------------------------------------------------------- the player
@@ -353,21 +387,30 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
   const bus = ctx.createGain();
   bus.gain.value = baseGain;
   bus.connect(out);
-  /** @type {GainNode[]} one gain per channel */
-  const chan = [];
-  for (let c = 0; c < CHANNELS; c++) {
-    const g = ctx.createGain();
-    /** @type {AudioNode} */
-    let node = g;
-    if (ctx.createStereoPanner) {
-      const p = ctx.createStereoPanner();
-      p.pan.value = PAN[c];
-      g.connect(p);
-      node = p;
+  // Four channels (a gain and a stereo pan each), all feeding one destination.
+  /** @param {AudioNode} target @returns {GainNode[]} */
+  function makeChannels(target) {
+    /** @type {GainNode[]} */
+    const list = [];
+    for (let c = 0; c < CHANNELS; c++) {
+      const g = ctx.createGain();
+      /** @type {AudioNode} */
+      let node = g;
+      if (ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = PAN[c];
+        g.connect(p);
+        node = p;
+      }
+      node.connect(target);
+      list.push(g);
     }
-    node.connect(bus);
-    chan.push(g);
+    return list;
   }
+  const chan = makeChannels(bus);
+  // Stingers have a bus of their own, made when the first one plays, so ducking the music doesn't duck them.
+  /** @type {GainNode[] | null} */
+  let stingerChan = null;
 
   const LOOKAHEAD = 0.3, TICK_MS = 60;
   /** @type {ReturnType<typeof setInterval> | null} */
@@ -378,9 +421,9 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
 
   /**
    * @param {SampleName} sampleName @param {number} when @param {number} duration @param {number} rate
-   * @param {number} vol @param {number} ch @param {Voicing | null} voicing
+   * @param {number} vol @param {number} ch @param {Voicing | null} voicing @param {GainNode[]} [channels]
    */
-  function voice(sampleName, when, duration, rate, vol, ch, voicing) {
+  function voice(sampleName, when, duration, rate, vol, ch, voicing, channels = chan) {
     const src = ctx.createBufferSource();
     src.buffer = buffers[sampleName] ?? null;
     src.playbackRate.value = rate;
@@ -398,7 +441,7 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
     g.gain.setValueAtTime(vol, Math.max(when + attack, end - release));
     g.gain.linearRampToValueAtTime(0, end);
     src.connect(g);
-    g.connect(chan[ch]);
+    g.connect(channels[ch]);
     src.start(when);
     src.stop(end + 0.02);
     const note = { src, g };
@@ -422,6 +465,10 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
     }
   }
 
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let stingerTimer = null;
+  const STINGER_DUCK = 0.35;   // the music plays at this fraction of its level under a stinger
+
   /** @param {number} value */
   function setBus(value, seconds = 0.15) {
     const t = ctx.currentTime;
@@ -440,26 +487,51 @@ export function createMusic(ctx, out, { song = SONG, baseGain = MUSIC_GAIN } = {
 
   return {
     // Start (or restart) from the beginning of a stage, at once. A song switches to that arrangement;
-    // without one the current arrangement carries on.
-    /** @param {number} [stage] @param {Song} [newSong] */
-    restart(stage = 0, newSong) {
+    // without one the current arrangement carries on. A delay (seconds) holds the first note back, for
+    // a stinger to play first.
+    /** @param {number} [stage] @param {Song} [newSong] @param {number} [delay] */
+    restart(stage = 0, newSong, delay = 0) {
       cutAll(0.08);
+      if (stingerTimer) { clearTimeout(stingerTimer); stingerTimer = null; }
       if (newSong && newSong !== seq.song) seq.setSong(newSong);
       seq.reset(stage);
-      nextTime = ctx.currentTime + 0.12;
+      nextTime = ctx.currentTime + 0.12 + delay;
       running = true;
       setBus(baseGain * duck, 0.05);
       if (!timer) timer = setInterval(pump, TICK_MS);
       pump();
     },
+    // Play a stinger (see STINGERS in music-data.js) now, over the music, which is turned down while it plays
+    // (unless over is false: for music that has been held back to start after it). Nothing happens if the
+    // music isn't running or there is no stinger of that name. Returns how long it lasts, in seconds.
+    /** @param {string} name @returns {number} */
+    stinger(name, over = true) {
+      const st = STINGERS[name];
+      if (!st || !running) return 0;
+      if (!stingerChan) {
+        const sb = ctx.createGain();
+        sb.gain.value = baseGain;
+        sb.connect(out);
+        stingerChan = makeChannels(sb);
+      }
+      const { events, length } = stingerEvents(st, ctx.currentTime + 0.05, samples);
+      for (const e of events) voice(e.sample, e.when, e.duration, e.rate, e.vol, e.ch, e.voicing, stingerChan);
+      if (over) {
+        setBus(baseGain * duck * STINGER_DUCK, 0.05);
+        if (stingerTimer) clearTimeout(stingerTimer);
+        stingerTimer = setTimeout(() => { stingerTimer = null; if (running) setBus(baseGain * duck, 0.6); }, (length + 0.3) * 1000);
+      }
+      return length;
+    },
     // Ask for a stage; it begins at the next phrase boundary.
     /** @param {number} n */
     setStage(n) { seq.setStage(n); },
     /** @param {number} v  music level while ducked, 0..1 */
-    setDuck(v) { duck = v; if (running) setBus(baseGain * duck, 0.25); },
+    setDuck(v) { duck = v; if (running) setBus(baseGain * duck * (stingerTimer ? STINGER_DUCK : 1), 0.25); },
     stop(seconds = 0.6) {
       if (!running) return;
       running = false;
+      if (stingerTimer) { clearTimeout(stingerTimer); stingerTimer = null; }
       setBus(0, seconds);
       if (timer) clearInterval(timer);
       timer = null;

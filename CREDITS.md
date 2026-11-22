@@ -12,6 +12,9 @@ Every file is converted to mono, 8-bit, 11025 Hz WAV.
 |---|---|---|---|---|---|
 | `audio/sfx/deliver.wav` | food delivered to the old man | trimmed from `handleCoins2.ogg` in "50 RPG sound effects" | https://opengameart.org/content/50-rpg-sound-effects | Kenney Vleugels (kenney.nl) | CC0 1.0 |
 | `audio/sfx/foodDrop.wav` | food dropped | trimmed from `dropLeather.ogg` in "50 RPG sound effects" | https://opengameart.org/content/50-rpg-sound-effects | Kenney Vleugels (kenney.nl) | CC0 1.0 |
+| `audio/sfx/frostyCrash.wav` | Frosty crashes into something | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
+| `audio/sfx/frostyRoll.wav` | Frosty rolling | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
+| `audio/sfx/frostyWarn.wav` | Frosty winds up to roll (the warning) | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/gameover.wav` | game over | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/hit.wav` | sword hits a robber | trimmed from `chop.ogg` in "50 RPG sound effects" | https://opengameart.org/content/50-rpg-sound-effects | Kenney Vleugels (kenney.nl) | CC0 1.0 |
 | `audio/sfx/hurt.wav` | Wenceslas hurt | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
@@ -28,8 +31,11 @@ Every file is converted to mono, 8-bit, 11025 Hz WAV.
 ## Music
 
 There are no music files. The music is written as tracker-style pattern data in `js/music-data.js`,
-and its instrument samples (bell, choir, strings, bass, percussion) are synthesised in the browser by `js/music.js`.
+and its instrument samples (bell, choir, strings, bass, pluck, flute, percussion) are synthesised in the browser by `js/music.js`.
 
 - Tune: *Tempus adest floridum*, from *Piae Cantiones* (1582), the traditional melody of "Good King Wenceslas".
   It is in the public domain.
 - Arrangement and instrument synthesis: original to this project, dedicated to the public domain (CC0 1.0).
+- Frosty's arrival stinger: the notes of `frosty-arrive.mid`, by the project's author, converted by
+  `tools/midi-to-stinger.mjs`. Dedicated to the public domain (CC0 1.0).
+- The boss theme: an original piece built from that stinger's motif, also dedicated to the public domain (CC0 1.0).

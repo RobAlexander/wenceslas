@@ -7,10 +7,12 @@
 //   With a night, also writes music-night<N>.wav: that night's arrangement, build-up and all.
 //
 // Writes music-stage0.wav ... music-stage4.wav (each stage on its own) and music-night.wav
-// (a whole night's build-up, with the stage changes at phrase boundaries).
+// (a whole night's build-up, with the stage changes at phrase boundaries), and music-stinger-NAME.wav for
+// each stinger on its own, and music-boss.wav: the arrival stinger running into the boss theme as Frosty is
+// hurt (stages 0, 1 and 2), plus music-boss-stage0.wav ... music-boss-stage2.wav on their own.
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { Sequencer, makeSamples, phraseEvents, SAMPLE_RATE, PAN, MUSIC_GAIN } from '../js/music.js';
-import { SONG } from '../js/music-data.js';
+import { Sequencer, makeSamples, phraseEvents, stingerEvents, SAMPLE_RATE, PAN, MUSIC_GAIN } from '../js/music.js';
+import { SONG, STINGERS, BOSS_SONG } from '../js/music-data.js';
 import { arrangement } from '../js/arrange.js';
 
 const OUT_RATE = 22050, BASE_GAIN = MUSIC_GAIN;
@@ -92,4 +94,39 @@ console.log('   night:', render('music-night', [[0, 2], [1, 2], [2, 4], [3, 8], 
 if (nightArg) {
   const song = arrangement(nightArg);
   console.log(`   night ${nightArg}:`, render(`music-night${nightArg}`, [[0, 2], [1, 2], [2, 4], [3, 8], [4, 8]], song));
+}
+for (const [name, st] of Object.entries(STINGERS)) {
+  const { events, length } = stingerEvents(st, 0.1, samples);
+  const seconds = length + 1.5;
+  wav(`${outDir}/music-stinger-${name}.wav`, mixEvents(events, seconds), seconds);
+}
+
+// The boss theme: the stinger, then the theme starting just as it ends, moving up a stage every few phrases
+{
+  const stinger = stingerEvents(STINGERS.frostyArrive, 0.1, samples);
+  const seq = new Sequencer(BOSS_SONG);
+  const events = [...stinger.events];
+  let t = 0.1 + stinger.length;
+  const log = [];
+  [[0, 4], [1, 8], [2, 8]].forEach(([stage, count]) => {
+    seq.setStage(stage);
+    for (let i = 0; i < count; i++) {
+      const p = seq.nextPhrase();
+      const { events: ev, length } = phraseEvents(p, t, samples);
+      events.push(...ev); log.push(`${p.stage}:${p.id}`); t += length;
+    }
+  });
+  const seconds = t + 1.5;
+  wav(`${outDir}/music-boss.wav`, mixEvents(events, seconds), seconds);
+  console.log('   boss:', log.join(' '));
+  [0, 1, 2].forEach((stage) => {
+    const s2 = new Sequencer(BOSS_SONG);
+    s2.setStage(stage);
+    const ev = []; let tt = 0.1;
+    for (let i = 0; i < BOSS_SONG.stages[stage].phrases.length * 2; i++) {
+      const { events: e2, length } = phraseEvents(s2.nextPhrase(), tt, samples);
+      ev.push(...e2); tt += length;
+    }
+    wav(`${outDir}/music-boss-stage${stage}.wav`, mixEvents(ev, tt + 1.5), tt + 1.5);
+  });
 }

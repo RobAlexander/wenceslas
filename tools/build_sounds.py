@@ -6,7 +6,10 @@
   * The rest are synthesised here, with a fixed random seed, so a rebuild gives the same files.
 
 Every effect ends up as the brief asks: mono, 8-bit, 11025 Hz WAV (Amiga-style).
-Needs ffmpeg and SoX; uses only the Python standard library.   Usage: python3 tools/build_sounds.py
+Needs ffmpeg and SoX; uses only the Python standard library.
+Usage: python3 tools/build_sounds.py [--synth-only]
+  --synth-only   rebuild just the synthesised effects (the third-party clips need not be downloaded;
+                 their files are left alone and still credited)
 """
 import math, os, random, struct, subprocess, sys, tempfile, wave
 from pathlib import Path
@@ -164,6 +167,40 @@ def synth_partridge():  # a grey partridge's "kee-uck, kee-uck": rising chirp, t
     mix(s, chirp(1800, 3000, 0.1, decay=10, tremolo=0.2), 1.1, 0.5)
     return s
 
+
+def swell(x, peak=0.4, power=1.0):
+    """Shape a sound to grow to a peak (a fraction of the way through) and then fade."""
+    n = len(x)
+    return [v * (min(1.0, (i / n) / peak) if i / n < peak else max(0.0, 1.0 - ((i / n) - peak) / (1.0 - peak))) ** power
+            for i, v in enumerate(x)]
+
+def synth_frosty_warn():  # Frosty winds up for a roll: a low groan that climbs, with ice creaking over it
+    n = 0.9
+    s = swell(chirp(62, 128, n, decay=0.0, tremolo=0.55, harmonics=(1.0, 0.7, 0.4, 0.22)), peak=0.75, power=0.8)
+    creak = resonate(noise(n, lp=0.9, decay=0.0), 1150, 260)
+    mix(s, swell([v * (0.6 + 0.4 * math.sin(TAU * 23 * i / SR)) for i, v in enumerate(creak)], peak=0.8), 0.0, 1.1)
+    mix(s, bell(note('E6'), 0.3, decay=11, index=2), 0.72, 0.35)    # a cold "tink" at the end
+    return s
+
+def synth_frosty_roll():  # Frosty rolling: a heavy rumble, with the crunch of snow, turning about nine times a second
+    n = 1.35
+    rumble = noise(n, lp=0.06, decay=0.0)
+    crunch = noise(n, lp=0.5, decay=0.0, hp=0.4)
+    s = []
+    for i in range(int(n * SR)):
+        t = i / SR
+        turn = 0.55 + 0.45 * math.sin(TAU * 9 * t)
+        s.append(rumble[i] * 5.0 * turn + crunch[i] * 1.2 * turn ** 2 + 0.5 * math.sin(TAU * 46 * t) * turn)
+    return swell(s, peak=0.3, power=0.7)
+
+def synth_frosty_crash():  # Frosty hits a tree, a wall or the edge of the world: a boom, a crunch, flying ice
+    s = thump(0.6, f0=95, f1=30, decay=7)
+    mix(s, noise(0.35, lp=0.55, decay=9, hp=0.25), 0.0, 0.9)
+    mix(s, thump(0.3, f0=70, f1=34, decay=12), 0.13, 0.5)
+    for at in (0.05, 0.1, 0.17, 0.26, 0.38):            # shards of ice
+        mix(s, bell(rng.uniform(1800, 3600), 0.12, decay=24, index=1.5), at, 0.22)
+    return s
+
 SYNTH = {
     'kill':          (synth_kill,           'robber killed'),
     'hurt':          (synth_hurt,           'Wenceslas hurt'),
@@ -172,6 +209,10 @@ SYNTH = {
     'nightComplete': (synth_night_complete, 'night complete'),
     'gameover':      (synth_gameover,       'game over'),
     'partridge':     (synth_partridge,      'the partridge'),
+    # Added last, so a rebuild still gives the earlier effects exactly as they were (they share one random sequence).
+    'frostyWarn':    (synth_frosty_warn,    'Frosty winds up to roll (the warning)'),
+    'frostyRoll':    (synth_frosty_roll,    'Frosty rolling'),
+    'frostyCrash':   (synth_frosty_crash,   'Frosty crashes into something'),
 }
 
 # ---------------------------------------------------------------- output
@@ -198,15 +239,17 @@ def decode(clip, start, dur, fade, dst):
     subprocess.run(cmd + [str(dst)], check=True)
 
 def main():
+    synth_only = '--synth-only' in sys.argv[1:]
     OUT.mkdir(parents=True, exist_ok=True)
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         for name, (clip, start, dur, fade, use) in SOURCED.items():
-            if not (SRC / clip).exists():
-                sys.exit(f'Missing {SRC / clip}\nRun tools/fetch_audio.sh first.')
-            decode(SRC / clip, start, dur, fade, tmp / f'{name}.wav')
-            to_amiga(tmp / f'{name}.wav', OUT / f'{name}.wav')
+            if not synth_only:
+                if not (SRC / clip).exists():
+                    sys.exit(f'Missing {SRC / clip}\nRun tools/fetch_audio.sh first, or use --synth-only.')
+                decode(SRC / clip, start, dur, fade, tmp / f'{name}.wav')
+                to_amiga(tmp / f'{name}.wav', OUT / f'{name}.wav')
             rows.append((name, use, f'trimmed from `{clip}` in "50 RPG sound effects"', PACK_URL, PACK_AUTHOR, PACK_LICENCE))
         for name, (fn, use) in SYNTH.items():
             write_wav(tmp / f'{name}.wav', fn())
@@ -233,11 +276,14 @@ def write_credits(rows):
     lines += [
         '', '## Music', '',
         'There are no music files. The music is written as tracker-style pattern data in `js/music-data.js`,',
-        'and its instrument samples (bell, choir, strings, bass, percussion) are synthesised in the browser by `js/music.js`.',
+        'and its instrument samples (bell, choir, strings, bass, pluck, flute, percussion) are synthesised in the browser by `js/music.js`.',
         '',
         '- Tune: *Tempus adest floridum*, from *Piae Cantiones* (1582), the traditional melody of "Good King Wenceslas".',
         '  It is in the public domain.',
         '- Arrangement and instrument synthesis: original to this project, dedicated to the public domain (CC0 1.0).',
+        '- Frosty\'s arrival stinger: the notes of `frosty-arrive.mid`, by the project\'s author, converted by',
+        '  `tools/midi-to-stinger.mjs`. Dedicated to the public domain (CC0 1.0).',
+        '- The boss theme: an original piece built from that stinger\'s motif, also dedicated to the public domain (CC0 1.0).',
         '',
     ]
     (ROOT / 'CREDITS.md').write_text('\n'.join(lines))

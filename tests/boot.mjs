@@ -5,6 +5,7 @@
 import { createCanvas } from 'canvas';
 import assert from 'node:assert/strict';
 import { NIGHTS } from '../js/config.js';
+import { SFX } from '../js/audio.js';
 
 const handlers = {};            // window-level listeners
 const canvasHandlers = {};      // canvas listeners
@@ -115,7 +116,7 @@ assert.equal(game.state, 'play');
 assert.equal(game.night, 1);
 await new Promise((r) => setImmediate(r));                           // let the effects finish loading
 assert.equal(audioLog.contexts, 1, 'audio is only started once');
-assert.equal(game.audio.loaded.length, 14, 'all 14 effects loaded');
+assert.equal(game.audio.loaded.length, Object.keys(SFX).length, 'every effect loaded');
 assert.equal(game.audio.music.running, true);
 assert.equal(game.audio.music.stage, 0, 'a night opens with the first phrase');
 

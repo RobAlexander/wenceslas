@@ -195,6 +195,62 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   assert.equal(audio.music.song, SONG, 'back to the classic one on the menus');
 }
 
+// ---- the boss: his stinger plays alone and the boss theme starts as it ends; the theme follows his health
+{
+  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { arrangement } = await import('../js/arrange.js');
+  const { audio, log } = await setup();
+  audio.setBoss(1);
+  assert.equal(log.started.length, 0, 'no audio before a gesture');
+  audio.setBoss(null);
+  audio.onState('play', 'title');
+  audio.unlock(); await tick();
+  audio.setNight(3);
+  audio.onState('play', 'title');
+  const m = audio.music;
+  assert.equal(m.song, arrangement(3));
+  const before = log.started.length;
+  audio.setBoss(1);
+  assert.equal(m.song, BOSS_SONG, 'the boss theme replaces the night music');
+  assert.equal(m.stage, 0);
+  assert.ok(log.started.length - before > 20, 'with the arrival stinger played: ' + (log.started.length - before));
+  // the theme waits for the stinger: nothing from the song itself starts for the first couple of seconds
+  const notes = log.started.length;
+  log.ctx.currentTime = 1.5; m.pump();
+  assert.equal(log.started.length, notes, 'the theme holds back until the stinger has ended');
+  log.ctx.currentTime = 2.9; m.pump();
+  assert.ok(log.started.length > notes, 'and then starts');
+  // it gets fuller as he is hurt, and the food progress no longer matters
+  audio.setBoss(0.5);
+  assert.equal(m.pendingStage, 1);
+  audio.setBoss(0.2);
+  assert.equal(m.pendingStage, 2);
+  audio.setProgress(1); audio.setProgress(0.2); audio.setProgress(1);
+  assert.equal(m.pendingStage, 2, 'delivering food does not move the boss theme');
+  audio.onState('paused', 'play');
+  assert.equal(m.running, true, 'it carries on while paused');
+  assert.equal(m.song, BOSS_SONG);
+  audio.onState('play', 'paused');
+  assert.equal(m.song, BOSS_SONG, 'and resuming keeps the boss theme');
+  // he falls: silence for the burst, then the night-end music comes back in the night's own arrangement
+  audio.setBoss(null);
+  assert.equal(m.running, false, 'the music stops when he falls');
+  audio.onState('nightEnd', 'play');
+  assert.equal(m.running, true);
+  assert.equal(m.song, arrangement(3), 'and the celebration is the night\'s music, not the boss theme');
+  assert.equal(m.stage, 4);
+  // leaving the fight by the pause menu puts the calm music back
+  audio.onState('play', 'nightEnd'); audio.setBoss(1);
+  assert.equal(m.song, BOSS_SONG);
+  audio.onState('paused', 'play'); audio.onState('title', 'paused');
+  audio.setBoss(null);
+  assert.equal(m.running, true, 'quitting mid-fight does not leave silence');
+  assert.equal(m.song.phrases.length, 8);
+}
+assert.equal(musicPlan('play', 1, 0.5).stage, 1, 'boss plan: half his health gone is stage 1');
+assert.equal(musicPlan('play', 1, 0.9).stage, 0);
+assert.equal(musicPlan('play', 1, null).stage, 4, 'no boss: the food decides');
+
 // ---- tab hidden / shown
 {
   const { audio, log } = await setup();

@@ -76,6 +76,9 @@ export const CURVES = {
     gap:        { start: 20, shrinkPerLevel: 1, min: 8 },     // seconds between new archers
     firstDelay: { start: 24, shrinkPerLevel: 1, min: 9 },     // seconds before the first archer
   },
+  boss: {
+    everyNights: 3,            // every this-many nights ends with a boss fight (3, 6, 9, 12)
+  },
   mary: {
     chance: 0.3,               // the chance Mary turns up on a given night: 0 is never, 1 is every night. Any night.
     earliest: 20,              // she rises from the ground no sooner than this many seconds into the night...
@@ -91,9 +94,9 @@ export const CURVES = {
 export const CFG = {
   // ---- Wenceslas ----
   kingSpeed: 85,
-  kingMaxHp: 10,
+  kingMaxHp: 5,
   kingInvuln: 0.8,          // seconds he can't be hurt again after a hit
-  hpRestoreBetweenNights: 0.5, // fraction of his health given back after each night (0.5 = half)
+  hpRestoreBetweenNights: 1,   // health points given back after each night (never above his maximum)
 
   // ---- The sword ----
   swingCooldown: 0.4,       // seconds between swings
@@ -167,14 +170,36 @@ export const CFG = {
   snowballLife: 3.5,        // most seconds a snowball flies
   snowballDamage: 1,
 
+  // ---- Bosses ----
+  // Frosty, a giant snowman, ends every boss night. After the last food is delivered he lumbers in, then
+  // repeats: aim (telegraph) -> roll in a straight line -> rest (dizzy: the only time he can be hurt).
+  // Each later boss night he is a little tougher, by the amounts below.
+  frostyHp: 10,             // sword hits to kill him, on the first boss night
+  frostyHpStep: 1,          // more health on each later boss night
+  frostyRadius: 13,         // how big he is, for touching Wenceslas, pages and scenery
+  frostyWalkSpeed: 45,      // lumbering in from the edge of the screen
+  frostyTelegraph: 1.0,     // seconds he leans back and shakes before a roll
+  frostyTelegraphStep: 0.05,   // shorter by this much on each later boss night
+  frostyLockTime: 0.3,      // he stops tracking Wenceslas this long before the roll starts, so a sidestep works
+  frostyRollSpeed: 210,     // faster than Wenceslas (85): you dodge it, you can't outrun it
+  frostyRollSpeedStep: 10,  // faster by this much on each later boss night
+  frostyRollDistance: 300,  // how far a roll goes if nothing stops it
+  frostyRest: 1.25,         // seconds dizzy after a roll: room for 2 or 3 sword swings
+  frostyRestStep: 0.1,      // shorter by this much on each later boss night
+  frostyCrashBonus: 0.5,    // extra dizzy time if he crashes into a tree, rock or wall
+  frostyDeathTime: 3.0,     // seconds he spends bursting into snowballs when he dies, before the night ends
+  frostyDamage: 2,          // rolling over Wenceslas. (A page has 2 health, so it dies.)
+
   // ---- Hard mode ----
   hardSpeedMul: 1.35,       // enemies are this many times faster
 
   // ---- Scoring ----
   pointsFood: 100,          // per item delivered
   pointsKill: 25,           // per enemy killed
+  pointsBoss: 200,          // extra for killing a boss
   parBase: 30,              // a night's par time is parBase + parPerFood * (food needed), in seconds
   parPerFood: 10,
+  parBoss: 30,              // extra par time on a boss night, for the fight
   pointsPerSecondUnderPar: 10, // the time bonus
   hardPointsMul: 2,         // hard mode doubles all points
 };

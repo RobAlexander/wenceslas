@@ -59,7 +59,7 @@ while it's open. Type a command and press Enter. Up and Down recall earlier comm
 |---|---|
 | `night N` / `night N hard` | Start a run on night N (1 to 12) |
 | `win` | Finish the current night |
-| `spawn robber\|wolf\|archer\|mary\|page\|food [count]` | Add things to the current night |
+| `spawn robber\|wolf\|archer\|mary\|frosty\|page\|food [count]` | Add things to the current night |
 | `kill` | Remove every enemy and arrow, with no points |
 | `hp N` | Set Wenceslas's health |
 | `god` | Toggle: Wenceslas takes no damage |
@@ -74,8 +74,8 @@ Commands are defined in `js/main.js`, and the console itself is `js/devconsole.j
 
 Sound starts at the first key press or click, because browsers don't allow it sooner.
 
-- **Effects** are 14 sampled sounds in `audio/sfx/` (mono, 8-bit, 11 kHz WAV, Amiga style).
-  Seven are trimmed from the CC0 "50 RPG sound effects" pack by Kenney (via OpenGameArt) and seven are synthesised.
+- **Effects** are 17 sampled sounds in `audio/sfx/` (mono, 8-bit, 11 kHz WAV, Amiga style).
+  Seven are trimmed from the CC0 "50 RPG sound effects" pack by Kenney (via OpenGameArt) and ten are synthesised.
   Every file is listed with its source, author and licence in `CREDITS.md`.
 - **Music** is played by a small four-channel tracker-style player (`js/music.js`) on the Web Audio API. There are no
   music files: the song is pattern data in `js/music-data.js`, and the instrument samples (bell, choir, strings, bass,
@@ -83,6 +83,13 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - **Adaptive:** each night starts with just the opening phrase, played slowly on a bell. As food is delivered the music
   adds the bass, then strings, then percussion, then a choir, and plays more of the carol until it plays the whole tune.
   Stages change only at phrase boundaries, and without progress the music keeps looping at its current stage.
+- **Stingers and the boss theme:** a stinger is a short phrase played once over the music (`STINGERS` in
+  `js/music-data.js`), made from a MIDI file with `node tools/midi-to-stinger.mjs file.mid`. Frosty's arrival stinger
+  comes from `frosty-arrive.mid`. When he arrives the night's music cuts, the stinger plays alone, and the boss theme
+  (`BOSS_SONG`) begins just as it ends. The theme is built from the stinger's figure (its first phrase is those same
+  eleven notes, an octave up) at the stinger's tempo, and it follows his health: stage 0 at the start, stage 1 (faster,
+  with a choir) after he has lost a third of his health, stage 2 (faster again, with a bell) after two thirds. When he
+  falls the music stops for the burst of snowballs, then the night-end music plays in the night's own arrangement.
 - **The tune is a draft.** The melody in `js/music-data.js` is a transcription from memory and hasn't been checked
   against a score. To correct it, edit the `lead` strings there; nothing else depends on the notes.
 
@@ -96,6 +103,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
+- `tests/frosty.mjs`: boss nights and Frosty (which nights, the telegraph and its lock, rolling, resting, only hurtable while dizzy, ten hits to kill, scaling).
 - `tests/mary.mjs`: Mary (the odds of her coming, the ice block rising and splitting, three hits to kill, walking slowly, snowballs behaving like arrows).
 - `tests/sword.mjs`: the sword's real reach against the arc that's drawn. `tests/tuning.mjs`: sanity checks on every number in `js/tuning.js`.
 - `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, name entry, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
@@ -108,8 +116,11 @@ Sound starts at the first key press or click, because browsers don't allow it so
   AudioContext, and the shipped sound files against the brief (mono, 8-bit, low rate, credited).
 - `tools/fetch_audio.sh` downloads the third-party source clips into `audio/source/` (not kept in git), and
   `tools/build_sounds.py` rebuilds every file in `audio/sfx/` and `CREDITS.md` from them. It needs ffmpeg and SoX.
-- `node tools/render_music.mjs [dir]` mixes each music stage, and a whole night's build-up, to WAV files so you can
-  listen without running the game (default folder `music-out/`).
+  `python3 tools/build_sounds.py --synth-only` rebuilds just the synthesised effects, without the downloaded clips
+  (new synthesised effects go at the end of `SYNTH`, so the earlier ones keep coming out exactly the same).
+- `node tools/render_music.mjs [dir]` mixes each music stage, a whole night's build-up, each stinger, and the boss
+  theme (the stinger running into it, and each stage) to WAV files so you can listen without running the game
+  (default folder `music-out/`).
 
 **To deploy,** copy `index.html`, `js/` and `audio/sfx/` to any web server. Everything else (`audio/source/`, `tools/`,
 `tests/`, `node_modules/`, `package.json`) is for development only.
@@ -120,7 +131,8 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - Enemy and supply numbers build up along curves in `js/tuning.js`, read two levels ahead (`NIGHT_OFFSET`) because the first two levels were too easy: night 1 plays like level 3, and night 12 like level 14. The food the old man needs is set separately and rises evenly from 5 on night 1 to 8 on night 12 (`FOOD_NEEDED`). Robber count and spawn rate rise each night; from night 4 some robbers take two hits.
 - The sword really reaches 60 pixels, but its arc is drawn at 30 (`swingRange` and `swingDrawnRadius`), so it hits further than it looks. Set them equal for an honest arc.
 - Pages are dropped between nights: each night starts with Wenceslas alone.
-- Wenceslas has 10 HP and recovers half his maximum between nights. Pages have 2 HP.
+- Wenceslas has 5 HP (`kingMaxHp`) and recovers just 1 HP between nights (`hpRestoreBetweenNights`). Pages have 2 HP.
+- The status line (night, health, food delivered, pages, score) is drawn in large text straight over the ground at the top of the screen, with no background strip. A boss's health bar sits at the bottom.
 - The sword doesn't hurt pages.
 - Hard mode resets the score and doubles all points.
 - Picking up food: Wenceslas or any page in the line can touch it, and it goes to the first empty-handed page.
@@ -154,6 +166,22 @@ Sound starts at the first key press or click, because browsers don't allow it so
   spoils the throw she was winding up. Her hit points show as three small pips above her once she's hurt. She has no sounds of her
   own yet (throws and hits reuse the sword-swing and hit sounds). She isn't mentioned on the How to play screen or in the night
   banner, so players find her by surprise. The numbers are in `js/tuning.js` (`CURVES.mary`, `mary*` and `snowball*`).
+
+- Every third night (3, 6, 9, 12) ends with a boss, Frosty, a giant snowman. Delivering the last food doesn't end the night: he
+  lumbers in from the edge of the screen, and nothing else spawns while he's out (what's already there stays). He repeats: lean
+  back and shake for 1 s with a red "!" (a line of dots on the ground shows where the roll will go; it follows Wenceslas, then
+  locks 0.3 s before the roll, so a late sidestep works), roll in a straight line at 210 px/s for up to 300 px, then sit dizzy for
+  1.25 s, which is room for 2 or 3 sword swings. He can only be hurt while dizzy; blows at any other time just puff off him. A roll
+  that reaches Wenceslas does 2 damage (he has 5), and flattens any page it goes through. It stops at the screen edge or at a
+  tree, rock or wall, and hitting scenery leaves him dizzy 0.5 s longer. It takes 10 hits. When he falls he bursts into a
+  shower of snowballs over three seconds (`frostyDeathTime`), shedding from the top down in four loud bursts; the night clock
+  stops, nothing can hurt Wenceslas, and only when the last of him is gone does the night end and the end-of-night box appear.
+  He is worth a 200-point bonus (added to the enemies total, awarded as he falls) and a par time 30 s longer. Each later boss night he's a little tougher (one more
+  hit, 10 px/s faster, 0.1 s less rest, 0.05 s less warning), so night 12's is 13 hits, but not a different fight. Frosty
+  isn't on the How to play screen; a short banner appears when he arrives. He has three sounds of his own: a low
+  groaning warning as he starts to aim (`frostyWarn`), a rumble as he rolls (`frostyRoll`) and a crash when a roll ends in
+  a tree, rock, wall or the edge of the screen (`frostyCrash`); his hits and defeat reuse the hit and kill sounds. His music
+  is described under Sound and music. The numbers are in `js/tuning.js` (`CURVES.boss` and `frosty*`).
 
 ## Licence
 

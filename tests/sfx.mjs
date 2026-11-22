@@ -9,7 +9,7 @@ const credits = readFileSync(new URL('../CREDITS.md', import.meta.url), 'utf8');
 
 // the sounds the brief asks for, at least
 const REQUIRED = ['swing', 'hit', 'kill', 'hurt', 'recruit', 'pageDie', 'pickup', 'foodDrop', 'deliver',
-  'nightComplete', 'gameover', 'partridge', 'menuMove', 'menuSelect'];
+  'nightComplete', 'gameover', 'partridge', 'menuMove', 'menuSelect', 'frostyWarn', 'frostyRoll', 'frostyCrash'];
 for (const name of REQUIRED) assert.ok(name in SFX, `${name} has a mix level`);
 
 const files = readdirSync(dir).filter((f) => f.endsWith('.wav')).map((f) => f.slice(0, -4)).sort();

@@ -4,8 +4,8 @@
 // refuse to play sound before then. Until that moment every call is a harmless no-op.
 // The game talks to it through a few calls: handle(events), onState(...), setProgress(...).
 
-import { createMusic, stageFor } from './music.js';
-import { SONG } from './music-data.js';
+import { createMusic, stageFor, stingerLength } from './music.js';
+import { SONG, BOSS_SONG, BOSS_THRESHOLDS } from './music-data.js';
 import { arrangement } from './arrange.js';
 
 // Effects in audio/sfx/, with how loud each plays (the files are all normalised, but not equally loud to the ear).
@@ -13,6 +13,7 @@ export const SFX = {
   swing: 0.55, hit: 0.85, kill: 0.9, hurt: 1.0, recruit: 0.8, pageDie: 0.9, pickup: 0.75,
   foodDrop: 0.75, deliver: 0.85, nightComplete: 0.9, gameover: 1.0, partridge: 0.9,
   menuMove: 0.6, menuSelect: 0.7,
+  frostyWarn: 0.85, frostyRoll: 0.7, frostyCrash: 1.0,
 };
 /** @typedef {keyof typeof SFX} SfxName */
 const SFX_NAMES = /** @type {SfxName[]} */ (Object.keys(SFX));
@@ -33,10 +34,12 @@ const MUTE_KEY = 'wenceslas.muted';
 /** @typedef {{ run: false } | { run: true, stage: number | null, duck: number }} MusicPlan */
 
 // What the music should be doing in each game state. stage: null leaves the current stage alone.
-/** @param {string} state @returns {MusicPlan} */
-export function musicPlan(state, progress = 0) {
+// boss: while Frosty is out, how much of his health is left (0 to 1), else null. Then the boss theme
+// plays, and the more damage he has taken the later its stage.
+/** @param {string} state @param {number} [progress] @param {number | null} [boss] @returns {MusicPlan} */
+export function musicPlan(state, progress = 0, boss = null) {
   switch (state) {
-    case 'play':     return { run: true, stage: stageFor(progress), duck: 1 };
+    case 'play':     return { run: true, stage: boss === null ? stageFor(progress) : stageFor(1 - boss, BOSS_THRESHOLDS), duck: 1 };
     case 'paused':   return { run: true, stage: null, duck: 0.3 };
     case 'nightEnd': return { run: true, stage: 4, duck: 0.8 };      // the whole carol, in celebration
     case 'ending':   return { run: true, stage: 4, duck: 1 };
@@ -85,11 +88,12 @@ export function createAudio({
   const buffers = {};
   /** @type {Partial<Record<SfxName, number>>} how many of each effect are sounding */
   const playing = {};
-  const cur = { state: 'title', progress: 0 };
+  /** @type {{ state: string, progress: number, boss: number | null }} boss: Frosty's health left (0 to 1) while he is out */
+  const cur = { state: 'title', progress: 0, boss: null };
   let nightSong = SONG;   // the arrangement for the night being played; the menus always use SONG
   // The arrangement a state plays: the night's own while playing it, the classic one around the menus.
   /** @param {string} state */
-  const songFor = (state) => (state === 'play' || state === 'paused' ? nightSong : SONG);
+  const songFor = (state) => (state === 'play' || state === 'paused' || state === 'nightEnd' || state === 'ending' ? nightSong : SONG);
   let muted = false;
   try { muted = storage?.getItem(MUTE_KEY) === '1'; } catch { /* storage unavailable */ }
 
@@ -97,7 +101,7 @@ export function createAudio({
 
   function applyPlan() {
     if (!music) return;
-    const plan = musicPlan(cur.state, cur.progress);
+    const plan = musicPlan(cur.state, cur.progress, cur.boss);
     if (!plan.run) { music.stop(0.4); return; }
     if (!music.running) music.restart(plan.stage ?? 1, songFor(cur.state));
     else if (plan.stage !== null) music.setStage(plan.stage);
@@ -159,6 +163,7 @@ export function createAudio({
     /** @param {string} state @param {string} prev */
     onState(state, prev) {
       cur.state = state;
+      if ((state !== 'play' && state !== 'paused') || (state === 'play' && prev !== 'paused')) cur.boss = null;   // no boss between nights
       if (state === 'play' && prev !== 'paused') { cur.progress = 0; if (music) music.restart(0, nightSong); }
       else if ((state === 'title' || state === 'highscores' || state === 'nameEntry') && (prev === 'play' || prev === 'paused')) music?.restart(1, SONG);
       applyPlan();
@@ -167,6 +172,23 @@ export function createAudio({
     // The night about to be played: it picks the arrangement, which starts with the night itself.
     /** @param {number} n */
     setNight(n) { nightSong = arrangement(n); },
+
+    // Frosty's health left, 0 to 1, or null when no boss is out (call it every frame). When he arrives the
+    // arrival stinger plays on its own and the boss theme starts as it ends; while he fights, the theme
+    // gets faster and fuller as he is hurt; when he falls the music stops, for the burst of snowballs.
+    /** @param {number | null} frac */
+    setBoss(frac) {
+      const was = cur.boss;
+      if (frac === was) return;
+      cur.boss = frac;
+      if (!music) return;
+      if (was === null && frac !== null) {
+        music.restart(0, BOSS_SONG, stingerLength('frostyArrive') - 0.07);
+        music.stinger('frostyArrive', false);
+        applyPlan();
+      } else if (frac === null) music.stop(0.4);
+      else applyPlan();
+    },
 
     // How far through the night's food target we are, 0 to 1.
     /** @param {number} frac */

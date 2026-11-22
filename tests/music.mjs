@@ -1,8 +1,8 @@
 // Tests for the music engine: parsing, the sequencer's stage rules, instrument samples, and
 // scheduling against a fake AudioContext. Run with: node tests/music.mjs
 import assert from 'node:assert/strict';
-import { SONG } from '../js/music-data.js';
-import { noteToMidi, midiToFreq, parseRow, stageFor, Sequencer, makeSamples, createMusic, SAMPLE_RATE } from '../js/music.js';
+import { SONG, STINGERS, BOSS_SONG, BOSS_THRESHOLDS } from '../js/music-data.js';
+import { noteToMidi, midiToFreq, parseRow, stageFor, Sequencer, makeSamples, createMusic, phraseEvents, stingerEvents, stingerLength, SAMPLE_RATE } from '../js/music.js';
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -211,6 +211,127 @@ assert.equal(stageFor(1), 4);
   music.pump(); assert.equal(starts.length, expected.length, 'nothing is scheduled after stop');
 
   globalThis.setInterval = realSetInterval; globalThis.clearInterval = realClear;
+}
+
+// ---- the boss theme: a valid song, in range, that really grows out of the arrival stinger
+{
+  const seq = new Sequencer(BOSS_SONG);
+  assert.equal(seq.parsed.length, BOSS_SONG.phrases.length);
+  for (const [i, parts] of seq.parsed.entries()) {
+    for (const cells of parts) assert.equal(cells.length, BOSS_SONG.rowsPerPhrase, 'boss phrase ' + i);
+    assert.ok(parts[0][0]?.midi, 'boss phrase ' + i + ' starts on a note');
+    for (const cell of parts[0].concat(parts[1])) if (cell?.midi) assert.ok(cell.midi >= 48 && cell.midi <= 84, 'lead and harmony range');
+    for (const cell of parts[2]) if (cell?.midi) assert.ok(cell.midi >= 36 && cell.midi <= 60, 'bass range');
+  }
+  for (const [i, st] of BOSS_SONG.stages.entries()) {
+    for (const id of st.phrases) assert.ok(id >= 0 && id < BOSS_SONG.phrases.length, 'boss stage ' + i);
+    st.voices.forEach((on, ch) => { if (on) assert.ok(st.instruments[ch], `boss stage ${i} channel ${ch}`); });
+    if (i) {
+      const a = BOSS_SONG.stages[i - 1];
+      assert.ok(st.bpm > a.bpm, 'it gets faster as Frosty is hurt');
+      a.voices.forEach((on, ch) => { if (on) assert.ok(st.voices[ch], 'and fuller'); });
+    }
+  }
+  assert.equal(BOSS_SONG.stages.length, BOSS_THRESHOLDS.length);
+  assert.deepEqual(BOSS_SONG.stages[0].phrases.slice(0, 1), [0], 'the fight opens on the stinger\'s own figure');
+  assert.equal(BOSS_SONG.stages[0].bpm, STINGERS.frostyArrive.bpm, 'at the stinger\'s tempo, so the stinger runs straight into it');
+  // phrase A's lead is the stinger's notes, on the same beats (a row is half a beat), an octave up
+  const lead = seq.parsed[0][0];
+  const motif = STINGERS.frostyArrive.notes;
+  for (const [midi, beat] of motif) {
+    const cell = lead[Math.round(beat * 2)];
+    assert.ok(cell && cell.midi === midi + 12, `the stinger's note ${midi} at beat ${beat} is in the theme (an octave up)`);
+  }
+  assert.equal(lead.filter((c) => c && c.midi).length, motif.length, 'and nothing else is in that phrase');
+  // the boss theme's lead is brought forward with a per-channel gain
+  {
+    const samples = makeSamples();
+    const phrase = new Sequencer(BOSS_SONG).nextPhrase();
+    const lead = phraseEvents(phrase, 0, samples).events.find((e) => e.ch === 0);
+    near(lead.vol, 0.30 * BOSS_SONG.stages[0].gains[0], 1e-9);
+    const plain = new Sequencer(SONG).nextPhrase();
+    assert.equal(plain.gains, undefined, 'the carol has no gains, so its balance is unchanged');
+  }
+  assert.equal(stageFor(0, BOSS_THRESHOLDS), 0);
+  assert.equal(stageFor(0.5, BOSS_THRESHOLDS), 1);
+  assert.equal(stageFor(0.9, BOSS_THRESHOLDS), 2);
+  assert.ok(stingerLength('frostyArrive') > 2.7 && stingerLength('frostyArrive') < 2.9, 'the stinger lasts about 2.8 s');
+  assert.equal(stingerLength('nope'), 0);
+}
+
+// ---- stingers: the note data
+{
+  const samples = makeSamples();
+  const st = STINGERS.frostyArrive;
+  assert.equal(st.bpm, 149, 'the tempo of frosty-arrive.mid');
+  assert.equal(st.notes.length, 11, 'its eleven notes');
+  const { events, length } = stingerEvents(st, 10, samples);
+  const loud = st.notes.filter((n) => n[3] >= 95).length;
+  assert.equal(events.length, 11 + 11 + loud, 'strings and bass on every note, the bell on the loud ones');
+  const beat = 60 / 149;
+  near(events[0].when, 10);
+  near(length, (6 + 0.979) * beat, 1e-9);
+  const strings = events.filter((e) => e.sample === 'strings');
+  near(strings[0].rate, midiToFreq(45 + 12) / samples.strings.baseFreq, 1e-9);         // the first note is A2, played an octave up
+  near(strings[3].when, 10 + 2 * beat, 1e-9);
+  const bells = events.filter((e) => e.sample === 'bell');
+  assert.equal(bells.length, loud);
+  near(bells[0].rate, midiToFreq(45 + 24) / samples.bell.baseFreq, 1e-9);               // two octaves up
+  for (const e of events) {
+    assert.ok(Number.isFinite(e.rate) && e.rate > 0.3 && e.rate < 6, 'rate ' + e.rate);
+    assert.ok(e.vol > 0 && e.vol < 3 && e.duration > 0 && e.ch >= 0 && e.ch < 4);
+  }
+  // quieter notes are quieter
+  const bass = events.filter((e) => e.sample === 'bass');
+  near(bass[0].rate, midiToFreq(45) / samples.bass.baseFreq, 1e-9);                        // the bass plays it as written
+  assert.ok(bass[1].vol < bass[0].vol, 'a velocity 60 note is softer than a velocity 100 one');
+}
+
+// ---- stingers: played over the music, which ducks and then comes back
+{
+  const realSetInterval = globalThis.setInterval, realClear = globalThis.clearInterval, realTimeout = globalThis.setTimeout, realClearT = globalThis.clearTimeout;
+  globalThis.setInterval = () => 1; globalThis.clearInterval = () => {};
+  const timers = [];
+  globalThis.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  globalThis.clearTimeout = () => {};
+  const starts = [], ramps = [];
+  let bufCount = 0;
+  const INSTRUMENTS = ['bell', 'choir', 'strings', 'bass', 'pluck', 'flute', 'K', 'S', 'H'];
+  const param = (log) => ({ value: 1, setValueAtTime() {}, linearRampToValueAtTime(v) { log?.push(v); }, cancelScheduledValues() {} });
+  let gains = 0;
+  const ctx = {
+    currentTime: 5,
+    createBuffer: () => ({ inst: INSTRUMENTS[bufCount++], copyToChannel() {} }),
+    createGain: () => ({ gain: param(gains++ === 0 ? ramps : null), connect() {} }),   // the first gain made is the music bus
+    createStereoPanner: () => ({ pan: { value: 0 }, connect() {} }),
+    createBufferSource() {
+      const src = { playbackRate: { value: 1 }, connect() {}, stop() {}, start(t) { starts.push({ t, inst: src.buffer.inst }); } };
+      return src;
+    },
+  };
+  const music = createMusic(ctx, { connect() {} }, { baseGain: 0.6 });
+  music.stinger('frostyArrive');
+  assert.equal(starts.length, 0, 'nothing while the music is not running');
+  music.restart(0);
+  const before = starts.length;
+  ramps.length = 0; timers.length = 0;
+  music.stinger('nope');
+  assert.equal(starts.length, before, 'an unknown stinger does nothing');
+  music.stinger('frostyArrive');
+  const added = starts.slice(before);
+  assert.ok(added.length > 20, 'the stinger plays its notes: ' + added.length);
+  near(added[0].t, 5.05, 1e-9);
+  assert.ok(added.some((n) => n.inst === 'strings') && added.some((n) => n.inst === 'bass') && added.some((n) => n.inst === 'bell'));
+  near(ramps.at(-1), 0.6 * 0.35, 1e-9);                                  // the music ducks
+  assert.equal(timers.length, 1);
+  assert.ok(timers[0].ms > 3000 && timers[0].ms < 3600, 'and comes back after the stinger: ' + timers[0].ms);
+  timers[0].fn();
+  near(ramps.at(-1), 0.6, 1e-9);
+  music.setDuck(0.3);
+  near(ramps.at(-1), 0.6 * 0.3, 1e-9);
+  music.stop(0);
+  globalThis.setInterval = realSetInterval; globalThis.clearInterval = realClear;
+  globalThis.setTimeout = realTimeout; globalThis.clearTimeout = realClearT;
 }
 
 console.log('music: all tests passed');

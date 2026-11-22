@@ -8,7 +8,7 @@ export { CFG, NIGHTS, NIGHT_OFFSET };
 // The screen. These aren't gameplay settings: the art is drawn for exactly this size.
 export const W = 640;
 export const H = 360;
-export const HUD_H = 14; // height of the status strip at the top
+export const HUD_H = 16; // the top of the play area: the status text is drawn over the ground above it
 
 export const WOLVES_FROM = CURVES.wolves.firstNight;
 export const ARCHERS_FROM = CURVES.archers.firstNight;
@@ -27,7 +27,7 @@ const groupSize = (c, n) => (n < c.firstNight ? 0 : Math.min(1 + Math.floor((n -
 /** @param {number} n */
 export function nightParams(n) {
   const lv = n + NIGHT_OFFSET;
-  const { robbers, pages, foodOnGround, wolves, archers, mary } = CURVES;
+  const { robbers, pages, foodOnGround, wolves, archers, mary, boss } = CURVES;
   const lastStep = Math.max(1, NIGHTS - 1);
   return {
     foodTarget: Math.max(1, Math.round(FOOD_NEEDED.firstNight + ((FOOD_NEEDED.lastNight - FOOD_NEEDED.firstNight) * (n - 1)) / lastStep)),
@@ -45,13 +45,27 @@ export function nightParams(n) {
     maxArchers: groupSize(archers, n),
     archerInterval: shrinking(archers.gap, lv),
     firstArcher: shrinking(archers.firstDelay, lv),
+    bossNo: n % boss.everyNights === 0 ? n / boss.everyNights : 0,   // 1 for the first boss night, 2 for the next... 0 for none
     maryChance: mary.chance,
     maryEarliest: mary.earliest,
     maryLatest: Math.max(mary.earliest, mary.latest),
   };
 }
 
-/** @param {number} foodTarget */
-export function parTime(foodTarget) {
-  return CFG.parBase + CFG.parPerFood * foodTarget;
+// Par time for a night. A boss night's fight is on top of the food.
+/** @param {number} foodTarget @param {number} [bossNo]  from nightParams; 0 for no boss */
+export function parTime(foodTarget, bossNo = 0) {
+  return CFG.parBase + CFG.parPerFood * foodTarget + (bossNo > 0 ? CFG.parBoss : 0);
+}
+
+// How tough Frosty is on the nth boss night (1 is the first), each a little more than the one before.
+/** @param {number} bossNo */
+export function frostyStats(bossNo) {
+  const k = Math.max(0, bossNo - 1);
+  return {
+    hp: CFG.frostyHp + CFG.frostyHpStep * k,
+    rollSpeed: CFG.frostyRollSpeed + CFG.frostyRollSpeedStep * k,
+    rest: Math.max(0.6, CFG.frostyRest - CFG.frostyRestStep * k),
+    telegraph: Math.max(0.5, CFG.frostyTelegraph - CFG.frostyTelegraphStep * k),
+  };
 }

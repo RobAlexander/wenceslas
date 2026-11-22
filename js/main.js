@@ -206,7 +206,7 @@ const actions = {
     if (game.night >= NIGHTS) { setState('ending', { score: game.score, night: game.night, hard: game.hard }); return; }
     // Pages are left behind between nights; Wenceslas recovers some health.
     const k = game.world.king;
-    game.kingHp = Math.min(CFG.kingMaxHp, k.hp + Math.ceil(CFG.kingMaxHp * CFG.hpRestoreBetweenNights));
+    game.kingHp = Math.min(CFG.kingMaxHp, k.hp + CFG.hpRestoreBetweenNights);
     startNight(game.night + 1);
   },
   // After a run ends (game over or the ending): name entry if it made the table.
@@ -237,7 +237,7 @@ const inPlay = () => {
 };
 /** @type {Record<string, (w: World) => void>} */
 const SPAWN = {
-  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => w.spawnMary(),
+  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => w.spawnMary(), frosty: (w) => { if (!w.boss) w.spawnFrosty(); },
   page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
 };
 const devConsole = createConsole({
@@ -261,7 +261,7 @@ const devConsole = createConsole({
       },
     },
     spawn: {
-      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, MARY, PAGE OR FOOD',
+      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, MARY, FROSTY, PAGE OR FOOD',
       run: ([kind, count = '1']) => {
         if (!SPAWN[kind]) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
         const w = inPlay(), n = int(count, 1, 20, 'COUNT');
@@ -315,12 +315,12 @@ game.console = devConsole;
 /** @param {World} w @returns {NightSummary} */
 function nightSummary(w) {
   const mul = w.hard ? CFG.hardPointsMul : 1;
-  const par = parTime(w.p.foodTarget);
+  const par = parTime(w.p.foodTarget, w.p.bossNo);
   const under = Math.max(0, Math.floor(par - w.time));
   return {
     food: w.delivered * CFG.pointsFood * mul,
     foodCount: w.delivered,
-    kills: w.kills * CFG.pointsKill * mul,
+    kills: (w.kills * CFG.pointsKill + w.bonus) * mul,
     killCount: w.kills,
     time: w.time,
     par,
@@ -375,7 +375,7 @@ function update(dt) {
 /** @param {World} w */
 function liveEarned(w) {
   const mul = w.hard ? CFG.hardPointsMul : 1;
-  return (w.delivered * CFG.pointsFood + w.kills * CFG.pointsKill) * mul;
+  return (w.delivered * CFG.pointsFood + w.kills * CFG.pointsKill + w.bonus) * mul;
 }
 
 function draw() {
@@ -395,6 +395,9 @@ function draw() {
     if (game.night === WOLVES_FROM) lines.push(['BEWARE: WOLVES STEAL FOOD!', PAL.o]);
     if (game.night === ARCHERS_FROM) lines.push(['BEWARE: ARCHERS SHOOT AT YOU!', PAL.o]);
     drawPanel(ctx, lines);
+  }
+  if (game.state === 'play' && w.bossIntro > 0) {
+    drawPanel(ctx, [['FROSTY!', PAL.o, 2], null, 'HE ROLLS. HIT HIM WHEN HE STOPS.']);
   }
   if (s) s.draw(ctx);
   touch.draw(ctx, w);
@@ -427,6 +430,8 @@ function frame() {
   if (steps === 5) acc = 0;
   audio.handle(game.events);
   if (game.state === 'play') audio.setProgress(Math.min(1, game.world.delivered / game.world.p.foodTarget));
+  const boss = game.world.boss;
+  audio.setBoss((game.state === 'play' || game.state === 'paused') && boss && boss.state !== 'dying' ? boss.hp / boss.maxHp : null);
   game.events.length = 0;
   draw();
   screenCtx.drawImage(buffer, 0, 0, canvas.width, canvas.height);

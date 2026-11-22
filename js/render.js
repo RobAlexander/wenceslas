@@ -1,7 +1,7 @@
 // Drawing. Everything is drawn at 640x360 and scaled up by CSS.
 
 import { W, H, HUD_H, CFG } from './config.js';
-import { PAL } from './sprites.js';
+import { PAL, disc } from './sprites.js';
 import { drawText, textWidth } from './font.js';
 import { makeCanvas } from './canvas.js';
 
@@ -14,6 +14,7 @@ import { makeCanvas } from './canvas.js';
 /** @typedef {import('./world.js').Archer} Archer */
 /** @typedef {import('./world.js').Arrow} Arrow */
 /** @typedef {import('./world.js').Mary} Mary */
+/** @typedef {import('./world.js').Frosty} Frosty */
 /** @typedef {import('./world.js').OldMan} OldMan */
 /** @typedef {import('./world.js').Obstacle} Obstacle */
 /** @typedef {ReturnType<typeof import('./sprites.js').loadSprites>} Sprites */
@@ -312,10 +313,83 @@ function drawMary(ctx, spr, m) {
   }
 }
 
-// A snowball: a white blob with a dark edge, so it shows on snow.
+// Frosty. Standing (arriving, aiming, resting) he is the snowman; rolling he is a big ball with his
+// face, scarf and hat turning round its edge. While he aims, a line on the ground shows where the roll
+// will go (it brightens when it is locked in), and he crouches and shakes harder as it nears.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Frosty} b @param {number} time */
+function drawFrosty(ctx, spr, b, time) {
+  const cx = Math.round(b.x), by = Math.round(b.y), f = spr.frosty;
+  if (b.state === 'aim') {
+    const len = CFG.frostyRollDistance;
+    for (let d = 14; d < len; d += 9) {
+      ctx.fillStyle = b.locked ? PAL.o : PAL.r;
+      ctx.fillRect(Math.round(b.x + b.dx * d), Math.round(b.y - 3 + b.dy * d), b.locked ? 3 : 2, b.locked ? 3 : 2);
+    }
+  }
+  if (b.state === 'roll') {
+    const r = Math.round(b.r), cy = by - r;
+    disc(ctx, cx, cy, r + 1, PAL.N);
+    disc(ctx, cx - 1, cy - 1, r, PAL.w);
+    disc(ctx, cx + 3, cy + 3, r - 4, '#e4ecf6');
+    const turn = (b.dx < 0 ? -1 : 1) * b.spin;
+    /** @type {[number, number, number, number, string][]} angle offset, radius, width, height, colour */
+    const bits = [[0, 7, 3, 3, PAL.k], [2.1, 7, 3, 3, PAL.k], [4.2, 7, 3, 3, PAL.k], [1.0, 9, 6, 3, PAL.o], [3.1, 10, 8, 3, PAL.r], [5.2, 10, 6, 4, PAL.k]];
+    for (const [off, rad, bw, bh, col] of bits) {
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(cx + Math.cos(turn + off) * rad - bw / 2), Math.round(cy + Math.sin(turn + off) * rad - bh / 2), bw, bh);
+    }
+    return;
+  }
+  if (b.state === 'dying') {
+    // he shakes, flashing, and loses height from the top down as the snowballs fly off him
+    const fall = 1 - Math.max(0, b.t) / CFG.frostyDeathTime;
+    const vis = Math.round(f.h * (1 - fall));
+    if (vis > 0) {
+      const shake = Math.round(Math.sin(time * 80) * (1 + fall * 2));
+      ctx.save();
+      ctx.translate(cx + shake, 0);
+      if (b.face < 0) ctx.scale(-1, 1);
+      ctx.drawImage(Math.floor(time * 16) % 2 ? f.white : f.img, 0, f.h - vis, f.w, vis, Math.round(-f.w / 2), by - vis + 1, f.w, vis);
+      ctx.restore();
+    }
+    return;
+  }
+  let x = cx, y = by, squash = 0;
+  if (b.state === 'aim') {
+    const near = 1 - b.t / b.stats.telegraph;                   // 0 to 1 as the roll nears
+    x += Math.round(Math.sin(time * 70) * near * 2);
+    squash = Math.round(near * 5);                              // crouching to push off
+  } else if (b.state === 'arrive') y -= Math.floor(b.walkT * 4) % 2;   // a lumbering bob
+  const img = b.flash > 0 ? f.white : f.img;
+  ctx.save();
+  ctx.translate(x, 0);
+  if (b.face < 0) ctx.scale(-1, 1);
+  ctx.drawImage(img, Math.round(-f.w / 2), y - f.h + 1 + squash, f.w, f.h - squash);
+  ctx.restore();
+  const top = y - f.h + 1 + squash;
+  if (b.state === 'aim') {
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(cx - 1, top - 9, 3, 5);
+    ctx.fillRect(cx - 1, top - 3, 3, 2);                        // "!" telegraph
+  } else if (b.state === 'rest') {
+    for (let i = 0; i < 3; i++) {                               // dizzy stars
+      const a = time * 5 + i * 2.094;
+      const sx = Math.round(cx + Math.cos(a) * 11), sy = Math.round(top - 1 + Math.sin(a) * 3);
+      ctx.fillStyle = PAL.y;
+      ctx.fillRect(sx - 1, sy, 3, 1); ctx.fillRect(sx, sy - 1, 1, 3);
+    }
+  }
+}
+
+// A snowball: a white blob with a dark edge, so it shows on snow. `big` is the larger kind.
 /** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y */
-function drawSnowball(ctx, x, y) {
+function drawSnowball(ctx, x, y, big = false) {
   const px = Math.round(x), py = Math.round(y);
+  if (big) {
+    disc(ctx, px, py, 3, PAL.N);
+    disc(ctx, px, py, 2, PAL.w);
+    return;
+  }
   ctx.fillStyle = PAL.N;
   ctx.fillRect(px - 2, py - 1, 5, 3);
   ctx.fillRect(px - 1, py - 2, 3, 5);
@@ -442,6 +516,21 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   for (const m of world.maries) {
     items.push({ y: m.y, draw: () => { shadow(ctx, m.x, m.y - 1, m.state === 'move' ? 7 : 12); drawMary(ctx, spr, m); } });
   }
+  const boss = world.boss;
+  if (boss) {
+    const rolling = boss.state === 'roll';
+    items.push({ y: boss.y, draw: () => { shadow(ctx, boss.x, boss.y - 1, rolling ? 24 : 20); drawFrosty(ctx, spr, boss, world.time); } });
+  }
+  for (const c of world.shower) {
+    items.push({
+      y: c.y,
+      draw: () => {
+        if (c.life < 0.4 && Math.floor(c.life * 20) % 2) return;   // blinks out at the end
+        shadow(ctx, c.x, c.y, c.big ? 5 : 3);
+        drawSnowball(ctx, c.x, c.y - c.z - 3, c.big);
+      },
+    });
+  }
   for (const a of world.arrows) items.push({ y: a.y, draw: () => drawArrow(ctx, a) });
   const k = world.king;
   items.push({
@@ -483,37 +572,56 @@ function drawObstacle(ctx, spr, o) {
   } else drawWall(ctx, o);
 }
 
+// The status line, drawn straight over the ground at the top of the screen, in big text with a drop
+// shadow so it reads on snow: the night, health, food delivered, pages in the line, and the score.
+// While a boss is out, his health bar sits at the bottom.
 /** @param {CanvasRenderingContext2D} ctx @param {World} world @param {Sprites} spr @param {number} score */
 export function drawHud(ctx, world, spr, score) {
-  ctx.fillStyle = 'rgba(26,28,44,0.65)';
-  ctx.fillRect(0, 0, W, HUD_H - 2);
+  const S = 2, ty = 2;
+  const night = 'NIGHT ' + world.night + (world.hard ? ' (HARD)' : '');
+  drawText(ctx, night, 6, ty, PAL.w, { scale: S });
 
-  drawText(ctx, 'NIGHT ' + world.night + (world.hard ? ' (HARD)' : ''), 4, 3, PAL.w);
-
-  // health bar
+  // health: one block for each point, shrinking if there are many
   const k = world.king;
-  const bx = 80, by = 3;
-  drawText(ctx, 'HP', bx, by, PAL.n);
-  const segs = CFG.kingMaxHp;
-  for (let i = 0; i < segs; i++) {
+  const hx = 6 + textWidth(night, S) + 16;
+  drawText(ctx, 'HP', hx, ty, PAL.n, { scale: S });
+  const pitch = Math.max(6, Math.min(12, Math.floor(70 / CFG.kingMaxHp)));
+  const gx = hx + textWidth('HP', S) + 5;
+  const low = k.hp <= Math.ceil(CFG.kingMaxHp / 3);
+  for (let i = 0; i < CFG.kingMaxHp; i++) {
     ctx.fillStyle = PAL.k;
-    ctx.fillRect(bx + 12 + i * 5, by - 1, 5, 7);
-    ctx.fillStyle = i < k.hp ? (k.hp <= 3 ? PAL.o : PAL.r) : PAL.D;
-    ctx.fillRect(bx + 13 + i * 5, by, 3, 5);
+    ctx.fillRect(gx + i * pitch, ty - 1, pitch - 1, 12);
+    ctx.fillStyle = i < k.hp ? (low ? PAL.o : PAL.r) : PAL.D;
+    ctx.fillRect(gx + i * pitch + 1, ty, pitch - 3, 10);
+    if (i < k.hp) { ctx.fillStyle = low ? PAL.y : '#e8707e'; ctx.fillRect(gx + i * pitch + 1, ty, pitch - 3, 2); }   // a lit top edge
   }
 
-  // food progress
+  // food delivered
   const fs = spr.food.bread;
   const txt = world.delivered + '/' + world.p.foodTarget;
   const cx = W / 2;
-  ctx.drawImage(fs.img, cx - textWidth(txt) / 2 - fs.w - 3, 3);
-  drawText(ctx, txt, cx, 3, PAL.y, { align: 'center' });
+  const tw = textWidth(txt, S);
+  ctx.drawImage(fs.img, Math.round(cx - tw / 2 - fs.w * 2 - 4), ty - 1, fs.w * 2, fs.h * 2);
+  drawText(ctx, txt, cx, ty, PAL.y, { scale: S, align: 'center' });
 
-  // pages
-  const pgTxt = 'PAGES ' + world.line.length;
-  drawText(ctx, pgTxt, cx + 40, 3, PAL.l);
+  // pages in the line
+  drawText(ctx, 'PAGES ' + world.line.length, cx + 70, ty, PAL.l, { scale: S });
 
-  drawText(ctx, String(score).padStart(6, '0'), W - 4, 3, PAL.w, { align: 'right' });
+  drawText(ctx, String(score).padStart(6, '0'), W - 6, ty, PAL.w, { scale: S, align: 'right' });
+
+  const boss = world.boss;
+  if (boss && boss.state !== 'dying') {
+    const bw = 200, bx = Math.round((W - bw) / 2), by = H - 16;
+    drawText(ctx, 'FROSTY', W / 2, by - 12, PAL.w, { align: 'center' });
+    ctx.fillStyle = PAL.k;
+    ctx.fillRect(bx - 1, by - 1, bw + 2, 10);
+    ctx.fillStyle = PAL.D;
+    ctx.fillRect(bx, by, bw, 8);
+    ctx.fillStyle = boss.flash > 0 ? PAL.w : PAL.c;
+    ctx.fillRect(bx, by, Math.round((bw * Math.max(0, boss.hp)) / boss.maxHp), 8);
+    ctx.fillStyle = PAL.C;
+    ctx.fillRect(bx, by, Math.round((bw * Math.max(0, boss.hp)) / boss.maxHp), 2);
+  }
 }
 
 /** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y */

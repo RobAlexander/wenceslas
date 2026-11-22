@@ -26,8 +26,11 @@ whole(NIGHT_OFFSET, 0, 'NIGHT_OFFSET');
 whole(FOOD_NEEDED.firstNight, 1, 'FOOD_NEEDED.firstNight');
 whole(FOOD_NEEDED.lastNight, 1, 'FOOD_NEEDED.lastNight');
 whole(CFG.kingMaxHp, 1, 'CFG.kingMaxHp');
+whole(CFG.hpRestoreBetweenNights, 0, 'CFG.hpRestoreBetweenNights');
 whole(CFG.pageMaxHp, 1, 'CFG.pageMaxHp');
 whole(CFG.maryHp, 1, 'CFG.maryHp');
+whole(CFG.frostyHp, 1, 'CFG.frostyHp');
+whole(CURVES.boss.everyNights, 1, 'CURVES.boss.everyNights');
 for (const group of ['wolves', 'archers']) {
   whole(CURVES[group].firstNight, 1, `CURVES.${group}.firstNight`);
   whole(CURVES[group].nightsPerExtra, 1, `CURVES.${group}.nightsPerExtra`);
@@ -38,7 +41,7 @@ whole(CURVES.foodOnGround.levelsPerExtra, 1, 'CURVES.foodOnGround.levelsPerExtra
 whole(CURVES.robbers.atOnce.max, 1, 'CURVES.robbers.atOnce.max');
 
 // Fractions and angles
-for (const [path, v] of [['CFG.hpRestoreBetweenNights', CFG.hpRestoreBetweenNights], ['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel], ['CURVES.mary.chance', CURVES.mary.chance]]) {
+for (const [path, v] of [['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel], ['CURVES.mary.chance', CURVES.mary.chance]]) {
   assert.ok(v <= 1, `${path} is a fraction between 0 and 1 (it is ${v})`);
 }
 assert.ok(CFG.swingHalfArc <= Math.PI, 'CFG.swingHalfArc is in radians and can be at most 3.14 (a full half circle each side)');
@@ -56,6 +59,11 @@ assert.ok(CFG.archerSpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'archers must walk
 assert.ok(CFG.marySpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'Mary must walk more slowly than Wenceslas, even in hard mode');
 assert.ok(CURVES.mary.earliest <= CURVES.mary.latest, 'CURVES.mary.earliest must not be later than CURVES.mary.latest');
 assert.ok(CFG.maryStopDistance < CFG.maryRange, 'Mary stops walking closer than maryStopDistance, so it has to be less than maryRange');
+assert.ok(CFG.frostyRollSpeed > CFG.kingSpeed, 'Frosty must roll faster than Wenceslas walks: he is dodged, not outrun');
+assert.ok(CFG.frostyRest >= 2 * CFG.swingCooldown, 'Frosty must rest long enough for at least two sword swings (swingCooldown is ' + CFG.swingCooldown + ')');
+assert.ok(CFG.frostyLockTime < CFG.frostyTelegraph, 'frostyLockTime is the end part of the telegraph, so it has to be shorter than frostyTelegraph');
+assert.ok(CFG.frostyDamage < CFG.kingMaxHp, 'one roll must not kill Wenceslas from full health: frostyDamage has to be less than kingMaxHp');
+assert.ok(CFG.frostyWalkSpeed < CFG.kingSpeed, 'Frosty must walk in more slowly than Wenceslas');
 assert.ok(CFG.archerKeepAway < CFG.archerRange, 'archers back away from closer than archerKeepAway, so it has to be less than archerRange');
 
 // What the curves give for every night
@@ -65,7 +73,7 @@ for (let n = 1; n <= NIGHTS; n++) {
   for (const [k, v] of Object.entries(p)) {
     assert.ok(Number.isFinite(v) && v >= 0, `night ${n}: ${k} came out as ${v}`);
   }
-  for (const k of ['foodTarget', 'maxRobbers', 'maxWanderingPages', 'maxFood', 'maxWolves', 'maxArchers']) {
+  for (const k of ['foodTarget', 'maxRobbers', 'maxWanderingPages', 'maxFood', 'maxWolves', 'maxArchers', 'bossNo']) {
     assert.ok(Number.isInteger(p[k]), `night ${n}: ${k} must be a whole number (it is ${p[k]})`);
   }
   assert.ok(p.foodTarget >= 1, `night ${n}: the old man needs at least one food`);
