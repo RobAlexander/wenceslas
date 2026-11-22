@@ -237,7 +237,7 @@ const inPlay = () => {
 };
 /** @type {Record<string, (w: World) => void>} */
 const SPAWN = {
-  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(),
+  robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => w.spawnMary(),
   page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
 };
 const devConsole = createConsole({
@@ -261,7 +261,7 @@ const devConsole = createConsole({
       },
     },
     spawn: {
-      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, PAGE OR FOOD',
+      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, MARY, PAGE OR FOOD',
       run: ([kind, count = '1']) => {
         if (!SPAWN[kind]) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
         const w = inPlay(), n = int(count, 1, 20, 'COUNT');
@@ -273,7 +273,7 @@ const devConsole = createConsole({
       help: 'REMOVE EVERY ENEMY AND ARROW (NO POINTS)',
       run: () => {
         const w = inPlay(), n = w.foes().length;
-        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.arrows.length = 0;
+        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.maries.length = 0; w.arrows.length = 0;
         return 'REMOVED ' + n;
       },
     },

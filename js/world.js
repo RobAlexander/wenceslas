@@ -140,12 +140,39 @@ import { FOOD_KINDS } from './sprites.js';
  * @property {boolean} entered   has come onto the screen
  */
 
+/** @typedef {'rise' | 'split' | 'move'} MaryState  rise: the ice block comes up; split: it opens; move: she walks and throws */
+
 /**
- * An arrow in flight. x, y are on the ground plane; it is drawn raised, at body height.
- * @typedef {{ id: number, x: number, y: number, vx: number, vy: number, angle: number, life: number }} Arrow
+ * Mary: an ice block rises out of the ground, splits open, and she follows Wenceslas slowly,
+ * throwing snowballs. She can't be hurt until she is out (state 'move').
+ * @typedef {object} Mary
+ * @property {number} id
+ * @property {'mary'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {MaryState} state
+ * @property {number} t          time left in 'rise' or 'split'
+ * @property {number} windup     time left holding a snowball up before throwing it
+ * @property {number} cd         time left before she may start another throw
+ * @property {number} aim        radians, toward Wenceslas while she holds a snowball up
+ * @property {number} stun
+ * @property {number} flash
+ * @property {number} kbx
+ * @property {number} kby
+ * @property {number} walkT
+ * @property {number} face
+ * @property {number} side
  */
 
-/** @typedef {Robber | Wolf | Archer} Foe */
+/**
+ * An arrow in flight, or a snowball (snow: true). x, y are on the ground plane; it is drawn raised, at body height.
+ * @typedef {{ id: number, x: number, y: number, vx: number, vy: number, angle: number, life: number, snow?: boolean }} Arrow
+ */
+
+/** @typedef {Robber | Wolf | Archer | Mary} Foe */
 
 /**
  * @typedef {{ kind: 'tree', x: number, y: number, r: number, size: number, variant: number }
@@ -231,7 +258,9 @@ export class World {
     this.wolves = [];
     /** @type {Archer[]} */
     this.archers = [];
-    /** @type {Arrow[]} */
+    /** @type {Mary[]} */
+    this.maries = [];
+    /** @type {Arrow[]} arrows and snowballs */
     this.arrows = [];
     /** @type {Food[]} */
     this.foods = [];
@@ -257,6 +286,8 @@ export class World {
     this.robberTimer = this.p.firstRobber;
     this.wolfTimer = this.p.firstWolf;
     this.archerTimer = this.p.firstArcher;
+    /** @type {number | null} seconds until Mary rises; Infinity if she isn't coming tonight; null until decided */
+    this.maryTimer = null;
     this.deliverTimer = 0;
 
     for (let i = 0; i < 2; i++) this.spawnFood();
@@ -400,9 +431,21 @@ export class World {
     this.emit('archer');
   }
 
-  // Every enemy the sword can hit.
+  // Mary's ice block rises somewhere on screen, well away from Wenceslas.
+  spawnMary() {
+    let pos = this.freeSpot(30, 14);
+    for (let i = 0; i < 20 && dist(pos, this.king) < CFG.maryAppearDistance; i++) pos = this.freeSpot(30, 14);
+    this.maries.push({
+      id: nextId++, kind: 'mary', x: pos.x, y: pos.y, r: 5, hp: CFG.maryHp, maxHp: CFG.maryHp,
+      state: 'rise', t: CFG.maryRise, windup: 0, cd: this.rng.range(0.4, 1), aim: 0,
+      stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1, side: this.rng() < 0.5 ? 1 : -1,
+    });
+    this.emit('maryRise');
+  }
+
+  // Every enemy the sword can hit. Mary can't be hit while she is still inside her ice.
   /** @returns {Foe[]} */
-  foes() { return [...this.robbers, ...this.wolves, ...this.archers]; }
+  foes() { return [...this.robbers, ...this.wolves, ...this.archers, ...this.maries.filter((m) => m.state === 'move')]; }
 
   // ---------- update ----------
 
@@ -417,6 +460,7 @@ export class World {
     this.updateRobbers(dt);
     this.updateWolves(dt);
     this.updateArchers(dt);
+    this.updateMaries(dt);
     this.updateArrows(dt);
     this.updateFood(dt);
     this.updateDelivery(dt);
@@ -488,7 +532,7 @@ export class World {
     }
   }
 
-  // A sword hit on a robber, a wolf or an archer. (nx, ny): direction of the blow.
+  // A sword hit on a robber, a wolf, an archer or Mary. (nx, ny): direction of the blow.
   /** @param {Foe} foe @param {number} nx @param {number} ny */
   hitFoe(foe, nx, ny) {
     foe.hp -= 1;
@@ -504,16 +548,22 @@ export class World {
       // a hit spoils the shot, and it doesn't go straight back to drawing
       foe.state = 'move';
       foe.cd = Math.max(foe.cd, CFG.archerCooldown * 0.5);
+    } else if (foe.kind === 'mary') {
+      // a hit spoils the throw
+      foe.windup = 0;
+      foe.cd = Math.max(foe.cd, CFG.maryCooldown * 0.5);
     } else foe.windup = 0;
     this.emit('hit');
     if (foe.hp <= 0) {
       if (foe.kind === 'wolf') this.wolves.splice(this.wolves.indexOf(foe), 1);
       else if (foe.kind === 'archer') this.archers.splice(this.archers.indexOf(foe), 1);
+      else if (foe.kind === 'mary') this.maries.splice(this.maries.indexOf(foe), 1);
       else this.robbers.splice(this.robbers.indexOf(foe), 1);
       this.kills++;
       this.emit('kill');
       const colors = foe.kind === 'wolf' ? ['#566c86', '#f4f4f4', '#333c57']
         : foe.kind === 'archer' ? ['#257179', '#38b764', '#f4f4f4']
+        : foe.kind === 'mary' ? ['#b13e53', '#f4f4f4', '#73eff7']
         : ['#5d275d', '#f4f4f4', '#333c57'];
       this.puff(foe.x, foe.y - 6, colors, 14);
       this.floatText(foe.x, foe.y - 16, '+' + CFG.pointsKill * this.pointsMul(), '#f4f4f4');
@@ -914,8 +964,80 @@ export class World {
     this.emit('arrowShoot');
   }
 
-  // Arrows fly straight until they leave the screen, hit a tree, or hit Wenceslas or a page
-  // (whichever they reach first: a page standing in the way takes it).
+  // ---------- Mary ----------
+  //
+  // An ice block rises out of the ground ('rise'), splits open ('split'), and Mary walks after
+  // Wenceslas, slowly. Whenever he is in range she holds a snowball up for a moment (the
+  // telegraph) and throws it at where he is then. Snowballs are arrows that are slower and white:
+  // see updateArrows. A hit spoils the throw, and it takes three hits to kill her.
+
+  /** @param {number} dt */
+  updateMaries(dt) {
+    const k = this.king;
+    const decay = Math.exp(-10 * dt);
+    for (const m of [...this.maries]) {
+      m.flash -= dt;
+      m.stun -= dt;
+      m.cd -= dt;
+      m.x += m.kbx * dt; m.y += m.kby * dt;
+      m.kbx *= decay; m.kby *= decay;
+      if (m.state === 'rise' || m.state === 'split') {
+        m.t -= dt;
+        if (m.t <= 0) {
+          if (m.state === 'rise') {
+            m.state = 'split';
+            m.t = CFG.marySplit;
+            this.puff(m.x, m.y - 8, ['#73eff7', '#f4f4f4', '#41a6f6'], 10);   // the crack
+          } else {
+            m.state = 'move';
+            this.puff(m.x, m.y - 8, ['#73eff7', '#f4f4f4', '#41a6f6'], 18);   // the halves fall away
+          }
+        }
+        continue;
+      }
+      if (m.stun > 0) continue;
+
+      const d = dist(m, k);
+      m.face = k.x < m.x ? -1 : 1;
+      if (m.windup > 0) {
+        m.windup -= dt;
+        m.aim = Math.atan2(k.y - m.y, k.x - m.x);
+        if (m.windup <= 0) { this.throwSnowball(m); m.cd = CFG.maryCooldown; }
+      } else if (m.cd <= 0 && d <= CFG.maryRange) {
+        m.windup = CFG.maryWindup;
+      }
+
+      // She keeps walking while she throws, until she is close.
+      if (d > CFG.maryStopDistance) {
+        const s = this.steer(m, (k.x - m.x) / d, (k.y - m.y) / d);
+        const sp = CFG.marySpeed * this.speedMul;
+        m.x += s.x * sp * dt;
+        m.y += s.y * sp * dt;
+        m.walkT += dt;
+        if (Math.abs(s.x) > 0.1) m.face = s.x < 0 ? -1 : 1;
+      }
+      m.x = clamp(m.x, 5, W - 5);
+      m.y = clamp(m.y, HUD_H + 12, H - 3);
+    }
+    this.separate(this.maries, 8);
+    for (const m of this.maries) this.collide(m);
+  }
+
+  // One snowball, aimed at Wenceslas where he stands now, with a random error.
+  /** @param {Mary} m */
+  throwSnowball(m) {
+    const k = this.king;
+    const a = Math.atan2(k.y - m.y, k.x - m.x) + this.rng.range(-CFG.marySpread, CFG.marySpread);
+    const c = Math.cos(a), s = Math.sin(a);
+    this.arrows.push({
+      id: nextId++, x: m.x + c * 6, y: m.y + s * 6,
+      vx: c * CFG.snowballSpeed, vy: s * CFG.snowballSpeed, angle: a, life: CFG.snowballLife, snow: true,
+    });
+    this.emit('arrowShoot');
+  }
+
+  // Arrows (and snowballs) fly straight until they leave the screen, hit a tree, or hit Wenceslas
+  // or a page (whichever they reach first: a page standing in the way takes it).
   /** @param {number} dt */
   updateArrows(dt) {
     for (const a of [...this.arrows]) {
@@ -943,7 +1065,7 @@ export class World {
           if (d < e.r + 2 && d < best) { best = d; hit = e; }
         }
         if (hit) {
-          this.damage(hit, a, CFG.arrowDamage);
+          this.damage(hit, a, a.snow ? CFG.snowballDamage : CFG.arrowDamage);
           if (hit !== this.king) this.emit('arrowHit');   // the king's own hurt sound covers him
           gone = true;
         }
@@ -1030,6 +1152,13 @@ export class World {
         if (this.wolves.length < p.maxWolves) this.spawnWolf();
         this.wolfTimer = p.wolfInterval * this.rng.range(0.7, 1.3);
       }
+    }
+    // Mary: whether she comes tonight is decided once, at the start, and then she comes once.
+    if (this.maryTimer === null) {
+      this.maryTimer = this.rng() < p.maryChance ? this.rng.range(p.maryEarliest, p.maryLatest) : Infinity;
+    } else if (this.maryTimer !== Infinity) {
+      this.maryTimer -= dt;
+      if (this.maryTimer <= 0) { this.spawnMary(); this.maryTimer = Infinity; }
     }
     if (p.maxArchers > 0) {
       this.archerTimer -= dt;

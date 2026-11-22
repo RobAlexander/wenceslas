@@ -76,6 +76,11 @@ export const CURVES = {
     gap:        { start: 20, shrinkPerLevel: 1, min: 8 },     // seconds between new archers
     firstDelay: { start: 24, shrinkPerLevel: 1, min: 9 },     // seconds before the first archer
   },
+  mary: {
+    chance: 0.3,               // the chance Mary turns up on a given night: 0 is never, 1 is every night. Any night.
+    earliest: 20,              // she rises from the ground no sooner than this many seconds into the night...
+    latest: 60,                // ...and no later than this
+  },
 };
 
 
@@ -146,6 +151,21 @@ export const CFG = {
   arrowLife: 2.5,           // most seconds an arrow flies
   arrowDamage: 1,
   arrowTreeBlock: 2,        // pixels beyond a tree's trunk at which it stops an arrow
+
+  // ---- Mary: rises out of an ice block, follows Wenceslas slowly and throws snowballs ----
+  maryHp: 3,                // sword hits to kill her
+  maryAppearDistance: 120,  // her ice block rises at least this far from Wenceslas
+  maryRise: 1.4,            // seconds the ice block takes to rise (she can't be hurt yet)
+  marySplit: 0.8,           // seconds it takes to split open (still can't be hurt)
+  marySpeed: 26,            // walking after him. Keep this well under kingSpeed (85).
+  maryStopDistance: 45,     // she stops walking this close to him, and keeps throwing
+  maryRange: 200,           // she throws only when he is within this
+  maryWindup: 0.35,         // seconds the snowball is held up before it is thrown (a hit spoils it)
+  maryCooldown: 1.8,        // between one throw and starting the next
+  marySpread: 0.12,         // random aiming error, radians either side
+  snowballSpeed: 120,       // slower than an arrow, so it can be dodged
+  snowballLife: 3.5,        // most seconds a snowball flies
+  snowballDamage: 1,
 
   // ---- Hard mode ----
   hardSpeedMul: 1.35,       // enemies are this many times faster

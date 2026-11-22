@@ -27,6 +27,7 @@ whole(FOOD_NEEDED.firstNight, 1, 'FOOD_NEEDED.firstNight');
 whole(FOOD_NEEDED.lastNight, 1, 'FOOD_NEEDED.lastNight');
 whole(CFG.kingMaxHp, 1, 'CFG.kingMaxHp');
 whole(CFG.pageMaxHp, 1, 'CFG.pageMaxHp');
+whole(CFG.maryHp, 1, 'CFG.maryHp');
 for (const group of ['wolves', 'archers']) {
   whole(CURVES[group].firstNight, 1, `CURVES.${group}.firstNight`);
   whole(CURVES[group].nightsPerExtra, 1, `CURVES.${group}.nightsPerExtra`);
@@ -37,7 +38,7 @@ whole(CURVES.foodOnGround.levelsPerExtra, 1, 'CURVES.foodOnGround.levelsPerExtra
 whole(CURVES.robbers.atOnce.max, 1, 'CURVES.robbers.atOnce.max');
 
 // Fractions and angles
-for (const [path, v] of [['CFG.hpRestoreBetweenNights', CFG.hpRestoreBetweenNights], ['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel]]) {
+for (const [path, v] of [['CFG.hpRestoreBetweenNights', CFG.hpRestoreBetweenNights], ['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel], ['CURVES.mary.chance', CURVES.mary.chance]]) {
   assert.ok(v <= 1, `${path} is a fraction between 0 and 1 (it is ${v})`);
 }
 assert.ok(CFG.swingHalfArc <= Math.PI, 'CFG.swingHalfArc is in radians and can be at most 3.14 (a full half circle each side)');
@@ -52,6 +53,9 @@ for (const k of ['kingSpeed', 'swingCooldown', 'swingRange', 'swingDrawnRadius',
 assert.ok(CFG.pageFollowSpeed > CFG.kingSpeed, 'pages must be faster than Wenceslas or the line can\'t keep up');
 assert.ok(CFG.archerRetreatSpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'archers must back away more slowly than Wenceslas walks, even in hard mode, so he can run them down');
 assert.ok(CFG.archerSpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'archers must walk more slowly than Wenceslas, even in hard mode');
+assert.ok(CFG.marySpeed * CFG.hardSpeedMul < CFG.kingSpeed, 'Mary must walk more slowly than Wenceslas, even in hard mode');
+assert.ok(CURVES.mary.earliest <= CURVES.mary.latest, 'CURVES.mary.earliest must not be later than CURVES.mary.latest');
+assert.ok(CFG.maryStopDistance < CFG.maryRange, 'Mary stops walking closer than maryStopDistance, so it has to be less than maryRange');
 assert.ok(CFG.archerKeepAway < CFG.archerRange, 'archers back away from closer than archerKeepAway, so it has to be less than archerRange');
 
 // What the curves give for every night

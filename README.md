@@ -59,7 +59,7 @@ while it's open. Type a command and press Enter. Up and Down recall earlier comm
 |---|---|
 | `night N` / `night N hard` | Start a run on night N (1 to 12) |
 | `win` | Finish the current night |
-| `spawn robber\|wolf\|archer\|page\|food [count]` | Add things to the current night |
+| `spawn robber\|wolf\|archer\|mary\|page\|food [count]` | Add things to the current night |
 | `kill` | Remove every enemy and arrow, with no points |
 | `hp N` | Set Wenceslas's health |
 | `god` | Toggle: Wenceslas takes no damage |
@@ -96,6 +96,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
+- `tests/mary.mjs`: Mary (the odds of her coming, the ice block rising and splitting, three hits to kill, walking slowly, snowballs behaving like arrows).
 - `tests/sword.mjs`: the sword's real reach against the arc that's drawn. `tests/tuning.mjs`: sanity checks on every number in `js/tuning.js`.
 - `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, name entry, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
 - `tests/gamepad.mjs`: unit tests for the gamepad module with a fake pad (deadzones, press-only swings, menu repeat).
@@ -143,6 +144,16 @@ Sound starts at the first key press or click, because browsers don't allow it so
   archers back away between shots, but at 34 pixels a second to Wenceslas's 85, so he can run them down; one hit kills.
   Arrows reuse the sword-swing and hit sounds (archers have no sound of their own yet). The numbers are in
   `js/tuning.js` (`archer*` and `arrow*`).
+- Mary can turn up on any night, from night 1: there is a 30% chance of her on each (`CURVES.mary.chance`), decided at the start
+  of the night, and she comes at most once, 20 to 60 seconds in. An ice block rises out of the ground at least 120 pixels from
+  Wenceslas (1.4 s), splits open (0.8 s), and Mary steps out in a close-fitting Santa suit. She can't be hurt while she is in
+  the ice. She walks after Wenceslas at 26 pixels a second (he walks at 85) and stops about 45 pixels away. Within 200 pixels of
+  him she holds a snowball up for 0.35 s, then throws it at where he is then, with a little random error, every 1.8 s. A snowball
+  is an arrow that is slower (120 pixels a second to 190) and does 1 damage; it hits the first of Wenceslas or a page it reaches,
+  trees stop it and rocks and walls don't. It takes three sword hits to kill her, for the same points as any other enemy, and a hit
+  spoils the throw she was winding up. Her hit points show as three small pips above her once she's hurt. She has no sounds of her
+  own yet (throws and hits reuse the sword-swing and hit sounds). She isn't mentioned on the How to play screen or in the night
+  banner, so players find her by surprise. The numbers are in `js/tuning.js` (`CURVES.mary`, `mary*` and `snowball*`).
 
 ## Licence
 

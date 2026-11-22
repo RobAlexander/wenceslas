@@ -13,6 +13,7 @@ import { makeCanvas } from './canvas.js';
 /** @typedef {import('./world.js').Wolf} Wolf */
 /** @typedef {import('./world.js').Archer} Archer */
 /** @typedef {import('./world.js').Arrow} Arrow */
+/** @typedef {import('./world.js').Mary} Mary */
 /** @typedef {import('./world.js').OldMan} OldMan */
 /** @typedef {import('./world.js').Obstacle} Obstacle */
 /** @typedef {ReturnType<typeof import('./sprites.js').loadSprites>} Sprites */
@@ -233,9 +234,100 @@ function drawArcher(ctx, spr, ar) {
   }
 }
 
+// Half of Mary's ice block: x0 is its left edge, y the ground, h its height.
+/** @param {CanvasRenderingContext2D} ctx @param {number} x0 @param {number} y @param {number} w @param {number} h @param {boolean} left */
+function iceHalf(ctx, x0, y, w, h, left) {
+  if (h < 1) return;
+  const top = Math.round(y - h);
+  ctx.fillStyle = PAL.c;
+  ctx.fillRect(x0, top, w, h);
+  ctx.fillStyle = PAL.C;
+  ctx.fillRect(x0, top, w, Math.min(2, h));                       // the lit top
+  ctx.fillStyle = PAL.w;
+  ctx.fillRect(x0 + (left ? 1 : w - 2), top + 3, 1, Math.max(0, h - 9));   // a glint
+  ctx.fillStyle = PAL.B;
+  ctx.fillRect(x0 + (left ? 0 : w - 1), top, 1, h);               // the outer edge
+  ctx.fillRect(x0, Math.round(y) - Math.min(2, h), w, Math.min(2, h));      // the shaded foot
+}
+
+// How far apart the halves of a splitting block are, and how tall (they sink as they part).
+/** @param {number} h @param {number} open  more than 0.4 @returns {{ gap: number, hh: number }} */
+function icePartsAt(h, open) {
+  const f = (open - 0.4) / 0.6;                                   // 0 to 1 as the halves part
+  return { gap: Math.round(f * 12), hh: Math.round(h * (1 - 0.85 * f)) };
+}
+
+// Mary's ice block, standing at (x, y) and h tall. open runs 0 to 1 as it splits: first a crack
+// runs down it, then the halves slide apart and sink.
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y @param {number} h @param {number} open */
+function drawIceBlock(ctx, x, y, h, open) {
+  const w = 14, half = w / 2, cx = Math.round(x), by = Math.round(y);
+  if (open <= 0.4) {
+    iceHalf(ctx, cx - half, by, half, h, true);
+    iceHalf(ctx, cx, by, half, h, false);
+    if (open > 0) {
+      // a jagged crack, growing down from the top
+      const len = Math.round(h * Math.min(1, open / 0.4));
+      ctx.fillStyle = PAL.d;
+      for (let i = 0; i < len; i++) ctx.fillRect(cx - 1 + (((i >> 1) & 1) ? 1 : 0), by - h + i, 1, 1);
+    }
+    return;
+  }
+  const { gap, hh } = icePartsAt(h, open);
+  iceHalf(ctx, cx - half - gap, by, half, hh, true);
+  iceHalf(ctx, cx + gap, by, half, hh, false);
+}
+
+// Mary. In her ice (rise, split) she is only the block; once out she walks, and holds a snowball up
+// before each throw. Her health shows as pips once she has been hurt.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Mary} m */
+function drawMary(ctx, spr, m) {
+  if (m.state === 'rise') {
+    const p = 1 - m.t / CFG.maryRise;
+    drawIceBlock(ctx, m.x + (Math.floor(m.t * 30) % 2), m.y, Math.round(18 * p), 0);   // it trembles as it comes up
+    return;
+  }
+  if (m.state === 'split') {
+    const p = 1 - m.t / CFG.marySplit;
+    if (p > 0.4) {
+      const { gap, hh } = icePartsAt(18, p);
+      ctx.fillStyle = PAL.D;
+      ctx.fillRect(Math.round(m.x) - gap, Math.round(m.y) - hh, gap * 2, hh);   // the dark opening between the halves
+    }
+    if (p > 0.6) blitChar(ctx, spr.mary, m, { moving: false });   // she is seen once the halves are wide enough apart
+    drawIceBlock(ctx, m.x, m.y, 18, p);                           // the halves go in front of her
+    return;
+  }
+  blitChar(ctx, spr.mary, m, { moving: m.stun <= 0, flash: m.flash > 0 });
+  if (m.windup > 0) {
+    const hx = m.x + m.face * 4;
+    line(ctx, hx, m.y - 9, hx, m.y - 15, PAL.r);                  // the arm, raised
+    drawSnowball(ctx, hx, m.y - 18);
+  }
+  if (m.hp < m.maxHp) {
+    for (let i = 0; i < m.maxHp; i++) {
+      ctx.fillStyle = i < m.hp ? PAL.r : PAL.D;
+      ctx.fillRect(Math.round(m.x) - 5 + i * 4, Math.round(m.y) - 18, 3, 1);
+    }
+  }
+}
+
+// A snowball: a white blob with a dark edge, so it shows on snow.
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y */
+function drawSnowball(ctx, x, y) {
+  const px = Math.round(x), py = Math.round(y);
+  ctx.fillStyle = PAL.N;
+  ctx.fillRect(px - 2, py - 1, 5, 3);
+  ctx.fillRect(px - 1, py - 2, 3, 5);
+  ctx.fillStyle = PAL.w;
+  ctx.fillRect(px - 1, py - 1, 3, 3);
+}
+
 // An arrow in flight: drawn at body height, with a small shadow on the ground.
+// (Snowballs are in the same list, and drawn as a ball.)
 /** @param {CanvasRenderingContext2D} ctx @param {Arrow} a */
 function drawArrow(ctx, a) {
+  if (a.snow) { shadow(ctx, a.x, a.y, 3); drawSnowball(ctx, a.x, a.y - 6); return; }
   const c = Math.cos(a.angle), s = Math.sin(a.angle), y = a.y - 6;
   shadow(ctx, a.x, a.y, 3);
   line(ctx, a.x - c * 7, y - s * 7, a.x, y, PAL.m);                  // shaft: dark, so it shows on snow
@@ -346,6 +438,9 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   }
   for (const ar of world.archers) {
     items.push({ y: ar.y, draw: () => { shadow(ctx, ar.x, ar.y - 1); drawArcher(ctx, spr, ar); } });
+  }
+  for (const m of world.maries) {
+    items.push({ y: m.y, draw: () => { shadow(ctx, m.x, m.y - 1, m.state === 'move' ? 7 : 12); drawMary(ctx, spr, m); } });
   }
   for (const a of world.arrows) items.push({ y: a.y, draw: () => drawArrow(ctx, a) });
   const k = world.king;

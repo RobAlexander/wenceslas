@@ -70,6 +70,28 @@ const ARCHER = [
   '.bbbbbbb.',
 ];
 
+// Mary: a red Santa suit that fits close, with white fur at the collar and hat, a black belt with
+// a gold buckle, long fair hair, and black boots.
+const MARY = [
+  '...rrrw..',
+  '..rrrrr..',
+  '..wwwww..',
+  '.ysssssy.',
+  '.ysksksy.',
+  '..ssrss..',
+  '...sss...',
+  '..wwwww..',
+  '.rrrrrrr.',
+  '.rrrwrrr.',
+  '..rrwrr..',
+  '.kkkykkk.',
+  '..rrrrr..',
+];
+const MARY_LEGS = [
+  ['..r...r..', '..k...k..'],
+  ['...r.r...', '..k...k..'],
+];
+
 const OLD_MAN = [
   '.........',
   '...bbb...',
@@ -217,6 +239,7 @@ export function loadSprites() {
     page: character(PAGE),
     robber: character(ROBBER),
     archer: character(ARCHER),
+    mary: character(MARY, MARY_LEGS),
     wolf: character(WOLF_BODY, WOLF_LEGS),
     oldMan: single(OLD_MAN),
     partridge: single(PARTRIDGE),

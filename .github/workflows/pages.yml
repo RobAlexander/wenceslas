@@ -40,6 +40,7 @@ jobs:
           node tests/highscores.mjs
           node tests/wolves.mjs
           node tests/archers.mjs
+          node tests/mary.mjs
           node tests/sword.mjs
           node tests/mouseaim.mjs
           node tests/arrange.mjs

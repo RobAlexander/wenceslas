@@ -27,7 +27,7 @@ const groupSize = (c, n) => (n < c.firstNight ? 0 : Math.min(1 + Math.floor((n -
 /** @param {number} n */
 export function nightParams(n) {
   const lv = n + NIGHT_OFFSET;
-  const { robbers, pages, foodOnGround, wolves, archers } = CURVES;
+  const { robbers, pages, foodOnGround, wolves, archers, mary } = CURVES;
   const lastStep = Math.max(1, NIGHTS - 1);
   return {
     foodTarget: Math.max(1, Math.round(FOOD_NEEDED.firstNight + ((FOOD_NEEDED.lastNight - FOOD_NEEDED.firstNight) * (n - 1)) / lastStep)),
@@ -45,6 +45,9 @@ export function nightParams(n) {
     maxArchers: groupSize(archers, n),
     archerInterval: shrinking(archers.gap, lv),
     firstArcher: shrinking(archers.firstDelay, lv),
+    maryChance: mary.chance,
+    maryEarliest: mary.earliest,
+    maryLatest: Math.max(mary.earliest, mary.latest),
   };
 }
 
