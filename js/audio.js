@@ -14,6 +14,7 @@ export const SFX = {
   foodDrop: 0.75, deliver: 0.85, nightComplete: 0.9, gameover: 1.0, partridge: 0.9,
   menuMove: 0.6, menuSelect: 0.7,
   frostyWarn: 0.85, frostyRoll: 0.7, frostyCrash: 1.0,
+  ghostScream: 0.8, iceStrike: 0.9, lightning: 1.0,
 };
 /** @typedef {keyof typeof SFX} SfxName */
 const SFX_NAMES = /** @type {SfxName[]} */ (Object.keys(SFX));

@@ -42,6 +42,8 @@ jobs:
           node tests/archers.mjs
           node tests/mary.mjs
           node tests/frosty.mjs
+          node tests/boleslaus.mjs
+          node tests/nicholas.mjs
           node tests/sword.mjs
           node tests/mouseaim.mjs
           node tests/arrange.mjs

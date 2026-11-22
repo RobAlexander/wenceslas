@@ -27,8 +27,18 @@ for (let seed = 1; seed <= 24; seed++) {
     const empty = w.line.some((p) => !p.food);
     const carrying = w.line.some((p) => p.food);
     const boss = w.boss;
-    if (boss && boss.state === 'rest') goal = boss;   // he is dizzy: go and hit him
-    else if (boss) {
+    if (boss && w.foes().includes(boss)) goal = boss;   // he can be hit now (dizzy, resting, or on foot): go and hit him
+    else if (w.ice && w.inIce(k)) {
+      // standing in an ice zone: step to the nearest cell that is not one
+      let best = null;
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 8; c++) {
+        const cx = c * 80 + 40, cy = 16 + r * 86 + 43;
+        if (w.inIce({ x: cx, y: cy })) continue;
+        if (!best || Math.hypot(cx - k.x, cy - k.y) < Math.hypot(best.x - k.x, best.y - k.y)) best = { x: cx, y: cy };
+      }
+      goal = best || w.oldMan;
+    }
+    else if (boss && Number.isFinite(boss.dx)) {
       // dodge: wait to the side of where the roll will go, about half way along it, ready to run in when he stops
       const side = Math.sign((k.x - boss.x) * -boss.dy + (k.y - boss.y) * boss.dx) || 1;
       goal = { x: boss.x + boss.dx * 130 - boss.dy * side * 60, y: boss.y + boss.dy * 130 + boss.dx * side * 60 };

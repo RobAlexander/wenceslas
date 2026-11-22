@@ -57,12 +57,17 @@ export function parTime(foodTarget, bossNo = 0) {
 
 // Which boss a boss night has, and which time that boss has come (1 the first time, 2 the next...), so each
 // repeat can be a little tougher. bossNo is from nightParams: 1 for the first boss night, 2 for the next.
-/** @param {number} bossNo @returns {{ kind: 'frosty' | 'mary', nth: number }} */
+// The order is CURVES.boss.order, which starts again when it runs out.
+const BOSS_KINDS = /** @type {const} */ (['frosty', 'mary', 'boleslaus', 'nicholas']);
+/** @typedef {typeof BOSS_KINDS[number]} BossKind */
+/** @param {number} bossNo @returns {{ kind: BossKind, nth: number }} */
 export function bossInfo(bossNo) {
-  const every = CURVES.boss.maryEvery;
-  const marys = every > 0 ? Math.floor(bossNo / every) : 0;
-  if (every > 0 && bossNo > 0 && bossNo % every === 0) return { kind: 'mary', nth: marys };
-  return { kind: 'frosty', nth: Math.max(1, bossNo - marys) };
+  const order = CURVES.boss.order;
+  const n = Math.max(1, bossNo);
+  const which = order[(n - 1) % order.length];
+  let nth = 0;
+  for (let i = 0; i < n; i++) if (order[i % order.length] === which) nth++;
+  return { kind: BOSS_KINDS[which] ?? 'frosty', nth: Math.max(1, nth) };
 }
 
 // How tough Frosty is the nth time he comes (1 is the first), each a little more than the one before.
@@ -87,4 +92,18 @@ export function maryStats(nth) {
     telegraph: Math.max(0.5, CFG.maryTelegraph - CFG.maryTelegraphStep * k),
     ballSpeed: CFG.maryBallSpeedStep * k,   // added to the speed of every snowball
   };
+}
+
+// The same for Boleslaus.
+/** @param {number} nth */
+export function boleslausStats(nth) {
+  const k = Math.max(0, nth - 1);
+  return { hp: CFG.boleslausHp + CFG.boleslausHpStep * k };
+}
+
+// The same for St Nicholas.
+/** @param {number} nth */
+export function nicholasStats(nth) {
+  const k = Math.max(0, nth - 1);
+  return { hp: CFG.nicholasHp + CFG.nicholasHpStep * k };
 }

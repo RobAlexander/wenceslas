@@ -8,6 +8,10 @@ export const PAL = {
   l: '#a7f070', g: '#38b764', G: '#257179', d: '#29366f', B: '#3b5dc9',
   c: '#41a6f6', C: '#73eff7', w: '#f4f4f4', n: '#94b0c2', N: '#566c86',
   D: '#333c57', s: '#f2c39a', b: '#8a5a3c', m: '#5b3a29',
+  // Prince Boleslaus's muted early medieval set: charcoal, iron, weathered bronze, aged beige, grey-brown hair.
+  a: '#2e2e36', A: '#4a4a54', i: '#8a929a', z: '#a8793a', Z: '#74512a', e: '#cbbd9a', h: '#6a5646', H: '#948672',
+  // St Nicholas's: deep crimson, darker gold, a shaded white; the bone of his skeletons; and the pale wisps of his ghosts.
+  R: '#8f2a3f', Y: '#c9953a', v: '#cfd4de', q: '#e8e2cc', Q: '#a89f86', f: '#dfe9f4', F: '#9fb3c8',
 };
 
 const LEGS = [
@@ -90,6 +94,142 @@ const MARY = [
 const MARY_LEGS = [
   ['..r...r..', '..k...k..'],
   ['...r.r...', '..k...k..'],
+];
+
+// Prince Boleslaus of Bohemia, facing left (the engine flips him): a round iron helmet with a bronze rim and
+// nasal bar, long dark hair, a stern brow over deep-set eyes, a prominent nose, a thick moustache and a broad
+// beard, a high chainmail collar, a heavy brown mantle fastened by two big bronze brooches, a belt, and boots.
+// 24 wide, 30 rows of body plus 2 of legs. His sword is drawn separately (it swings); its hand is at BOLESLAUS_HAND.
+const BOLESLAUS = [
+  '...aaiiiiiiiiiaAa.......',
+  '..aiiiiiiiiiiiiAa.......',
+  '..aiinnnnniiiiAAAa......',
+  '.aiiniiiiiiiiiAAAa......',
+  '.aiiniiiiiiiiiAAAa......',
+  '.aiiiiiiiiiiiiAAAa......',
+  '.aiiiiiiiiiiiiAAAaa.....',
+  '.azzzzzzzzzzzzzzzmma....',
+  '..aazmmmmmmmemmhmma.....',
+  '..aazZaeZaeeemmmHma.....',
+  '.aeeeeeeeeeeemmmhmma....',
+  '..aZeehhhhhhhmmmHmma....',
+  '..ahhHHHhhhhhmmhmma.....',
+  '..ahhhhHhhhhhhhmHma.....',
+  '..ahhhhhhHHhhhhmhmma....',
+  '...ahHhhhhhHhhhmHmma....',
+  '...ahhhHhhHhhhmhmma.....',
+  '....ahhhhHhHhhmmHmaa....',
+  '...aiHhhhhHhhhiiiiiia...',
+  '...aiAAHhhhHhAAAAAAAa...',
+  '..abbzzzhhHhAAbbzzzmma..',
+  'aabbzezzzhhAAAbzezzzmma.',
+  'iAAbzzZzzZZZZZZzzZzzmmma',
+  'iAAbzzzZzbiAAAbzzzZzmmma',
+  'AAAbbzzzbbezzAbbzzzbmmma',
+  'AAAaaaaaaazZzaaaaaaaaaam',
+  'eeebbbbbbbzzzAbbbbbbbmmm',
+  'ZeebbbbbbbiAAAbbbbbbbmmm',
+  'bbbbbbbbbbiAAAbbbbbbbmmm',
+  'ammammammaiAAAmammammamm',
+];
+const BOLESLAUS_LEGS = [
+  ['......aaa......aaa......', '.....kkkk......kkkk.....'],
+  ['.......aaa....aaa.......', '......kkkk....kkkk......'],
+];
+/** where his sword hand is, from the middle of his feet (the sprite faces left; flip x when he faces right) */
+export const BOLESLAUS_HAND = { x: -11, y: -5 };
+
+// St Nicholas, facing front: a thin gold halo behind his head, a receding hairline, white hair and a full white
+// beard; heavy crimson robes with gold trim, dark blue inner sleeves, a broad white stole marked with gold
+// crosses; a thick gold-bound book in one arm and the other hand raised in blessing. 28 wide, 46 rows plus 2 of hem.
+const NICHOLAS = [
+  '.........kkyyyyyyykk........',
+  '........kyyykkkkkyyyk.......',
+  '.......kyykkkkkkkkkyyk......',
+  '......kyyksvvvvvvvskyyk.....',
+  '......kykkwwssssswwkkyk.....',
+  '.....kyykkssssssssskkyyk....',
+  '.....kykkwwwssssswwwkkyk....',
+  '.....kykkwwssssssswwkkyk....',
+  '.kkk.kykkwwvvvsvvvwwkkyk....',
+  'kssskkykkwwskssskswwkkyk....',
+  'kssskkykkwwsssossswwkkyk....',
+  'sssskkyykwwwwwwwwwwwkyyk....',
+  'osssk.kykwwvwwwwwvwwkyk.....',
+  'ksssk.kyywwwvvvvvwwwyyk.....',
+  'kBBdk..kywwwwvowwvwwyk......',
+  'kdddk.kkkywvwwwwvwwykk......',
+  'kdddkkwwyywwvwwwwvwyywk.....',
+  'kdddrkwyyywwwvwwvwwyyyk.....',
+  'kdddrkwwywwvwwwwwvwvywk.....',
+  '.krrrrrrwwwwvwwwvwwvwRk.....',
+  '.krrrrrrrwwwwvwwwvwvRRk.....',
+  '..krrrrrrwwvwwwwvwwvRRk.....',
+  '..krrrrrRwwwvwwwwwwvRRk.....',
+  '...kkkRrRwYyvwwrwYyvRRk.....',
+  '....kRrRrYYYvRRrYYYvRRRk....',
+  '....kRrRrwYwvRRrwYwvRRRk....',
+  '....kRrRrwYwvRRrwYwvRRRkkkk.',
+  '....kRrRrwwwvRRrwwwvYYYYYYYk',
+  '...kRrrRrwwwvRRrwwwvYYyyyyYk',
+  '...kRrrRrwwwvRRrwwwvYYRRRyYk',
+  '...kRrrrRwwwvRRrwwwvYYRyRyYk',
+  '...kRrrrRwwwvRRrwwwvYYyyyyYk',
+  '...kRrrrRwYyvRRrwYyvYYRyRyYk',
+  '..kRrrrrRYYYvRRrYYYBddRRRyYk',
+  '..kRrrrrRwYwvRRrwYwBddRRRyYk',
+  '..kRrrrrRwYwvRRrwYwdddyyyyYk',
+  '..kRrrrRrwwwvRRrwwsssdmmmmmk',
+  '..kRrrrRrwwwvRRrwwsssdRRRkk.',
+  '.kRrrrrRrwwwvRRrwwsssrrRRRk.',
+  '.kRrrrrRrwwwvRRrwwwvrrrRRRk.',
+  '.kRrrrrRrwYyvRRrwYyvRrrRRRk.',
+  '.kRrrrrRrYYYvRRrYYYvRrrRRRk.',
+  'kRrrrrrrRwYwvRRrwYwvRrrrRRRk',
+  'kRrrrrrrRwYwwRRrwYwwRrrrRRRk',
+  'yyyyyyyyyyyyyyyyyyyyyyyyyyyy',
+  'YYYYYYYYYYYYYYYYYYYYYYYYYYYY',
+];
+const NICHOLAS_HEM = [
+  ['..RRRRRRRRRRRRRRRRRRRRRRRR..', '........kkk......kkk........'],
+  ['..RRRRRRRRRRRRRRRRRRRRRRRR..', '.........kkk....kkk.........'],
+];
+
+// A skeleton: the robber's size and stance in bone, with dark sockets and ribs (the club is drawn separately).
+const SKELETON = [
+  '..qqqqq..',
+  '.qqqqqqq.',
+  '.qkkqkkq.',
+  '.qqqkqqq.',
+  '..qkqkq..',
+  '...qQq...',
+  '.qQqqqQq.',
+  'qQqkqkqQq',
+  '.qkqkqkq.',
+  '..qqQqq..',
+];
+const SKELETON_LEGS = [
+  ['..q...q..', '..Q...Q..'],
+  ['...q.q...', '..Q...Q..'],
+];
+
+// A ghost: a pale wisp with hollow eyes and a screaming mouth; two frames of wavering hem. The "warning" set has red eyes.
+/** @param {string} eye @param {number} frame */
+const ghostRows = (eye, frame) => [
+  '...fffff...',
+  '..fffffff..',
+  '.fffffffff.',
+  '.ff' + eye + eye + 'f' + eye + eye + 'ff.',
+  '.ff' + eye + eye + 'f' + eye + eye + 'ff.',
+  '.fffffffff.',
+  '.ffFkkkFff.',
+  '.ffFkkkFff.',
+  '.fffFkFfff.',
+  '.fffffffff.',
+  '.fffffffff.',
+  '.fffffffff.',
+  frame ? 'fff.fff.fff' : '.fff.fff.ff',
+  frame ? 'ff...f...ff' : '..f...f...f',
 ];
 
 const OLD_MAN = [
@@ -292,6 +432,11 @@ export function loadSprites() {
     robber: character(ROBBER),
     archer: character(ARCHER),
     mary: character(MARY, MARY_LEGS),
+    boleslaus: character(BOLESLAUS, BOLESLAUS_LEGS),
+    nicholas: character(NICHOLAS, NICHOLAS_HEM),
+    skeleton: character(SKELETON, SKELETON_LEGS),
+    ghost: [single(ghostRows('k', 0)), single(ghostRows('k', 1))],
+    ghostWarn: [single(ghostRows('r', 0)), single(ghostRows('r', 1))],
     wolf: character(WOLF_BODY, WOLF_LEGS),
     oldMan: single(OLD_MAN),
     partridge: single(PARTRIDGE),

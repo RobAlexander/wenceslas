@@ -238,6 +238,8 @@ const inPlay = () => {
 /** @type {Record<string, (w: World) => void>} */
 const SPAWN = {
   robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => { if (!w.boss) w.spawnMary(); }, frosty: (w) => { if (!w.boss) w.spawnFrosty(); },
+  boleslaus: (w) => { if (!w.boss) w.spawnBoleslaus(); },
+  nicholas: (w) => { if (!w.boss) w.spawnNicholas(); },
   page: (w) => w.spawnPage(), food: (w) => w.spawnFood(),
 };
 const devConsole = createConsole({
@@ -261,7 +263,7 @@ const devConsole = createConsole({
       },
     },
     spawn: {
-      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, MARY, FROSTY, PAGE OR FOOD',
+      args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, MARY, FROSTY, BOLESLAUS, NICHOLAS, PAGE OR FOOD',
       run: ([kind, count = '1']) => {
         if (!SPAWN[kind]) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
         const w = inPlay(), n = int(count, 1, 20, 'COUNT');
@@ -273,7 +275,7 @@ const devConsole = createConsole({
       help: 'REMOVE EVERY ENEMY AND ARROW (NO POINTS)',
       run: () => {
         const w = inPlay(), n = w.foes().length;
-        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.arrows.length = 0;
+        w.robbers.length = 0; w.wolves.length = 0; w.archers.length = 0; w.ghosts.length = 0; w.arrows.length = 0;
         return 'REMOVED ' + n;
       },
     },
@@ -400,7 +402,11 @@ function draw() {
     // a short banner when a boss arrives: who, and what to do about them
     drawPanel(ctx, w.boss.kind === 'mary'
       ? [['MARY!', PAL.o, 2], null, 'DODGE THE SNOWBALLS. HIT HER WHEN SHE RESTS.']
-      : [['FROSTY!', PAL.o, 2], null, 'HE ROLLS. HIT HIM WHEN HE STOPS.']);
+      : w.boss.kind === 'boleslaus'
+        ? [['PRINCE BOLESLAUS!', PAL.o, 2], null, 'DUCK IN, HIT HIM, DUCK OUT.']
+        : w.boss.kind === 'nicholas'
+          ? [['ST NICHOLAS!', PAL.o, 2], null, 'THE DEAD RISE. WATCH THE GROUND.']
+          : [['FROSTY!', PAL.o, 2], null, 'HE ROLLS. HIT HIM WHEN HE STOPS.']);
   }
   if (s) s.draw(ctx);
   touch.draw(ctx, w);

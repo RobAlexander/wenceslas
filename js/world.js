@@ -1,6 +1,6 @@
 // Game logic for a single night. No drawing, no DOM.
 
-import { W, H, HUD_H, CFG, nightParams, bossInfo, frostyStats, maryStats } from './config.js';
+import { W, H, HUD_H, CFG, nightParams, bossInfo, frostyStats, maryStats, boleslausStats, nicholasStats } from './config.js';
 import { FOOD_KINDS } from './sprites.js';
 
 /** @typedef {import('./rng.js').Rng} Rng */
@@ -80,6 +80,12 @@ import { FOOD_KINDS } from './sprites.js';
  * @property {number} walkT
  * @property {number} face
  * @property {number} side
+ * @property {boolean} [guard]   one of Boleslaus's guards: stays near him until Wenceslas comes close
+ * @property {string} [name]     a guard's name (kept in the data; the font has no room for the accents yet)
+ * @property {number} [post]     which of the guard's places around the boss is theirs
+ * @property {boolean} [flee]    running away, after Boleslaus has fallen
+ * @property {boolean} [undead]  a skeleton raised by St Nicholas: worth no points
+ * @property {number} [rise]     a skeleton climbing out of the ground: time left, during which it can't be hit or act
  */
 
 /** @typedef {'circle' | 'hunt' | 'crouch' | 'leap' | 'recover' | 'flee'} WolfState */
@@ -204,8 +210,90 @@ import { FOOD_KINDS } from './sprites.js';
  * @typedef {{ id: number, x: number, y: number, vx: number, vy: number, angle: number, life: number, snow?: boolean }} Arrow
  */
 
-/** @typedef {Frosty | MaryBoss} Boss */
-/** @typedef {Robber | Wolf | Archer | Boss} Foe */
+/** @typedef {'arrive' | 'walk' | 'windup' | 'swing' | 'recover' | 'aim' | 'roll' | 'charge' | 'rest' | 'dying'} BoleslausState
+ *  arrive: strides in; walk: on foot toward Wenceslas; windup: the sword raised (the telegraph); swing: the blow; recover: after it;
+ *  aim: the telegraph for a roll or a charge; roll, charge: the rush (he can't be hit); rest: winded after it; dying: the fall */
+
+/**
+ * Prince Boleslaus of Bohemia, the third boss. He can be hit in every state but roll, charge and dying.
+ * @typedef {object} Boleslaus
+ * @property {number} id
+ * @property {'boleslaus'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {BoleslausState} state
+ * @property {number} t          time left in this state (the time since arriving, in 'arrive'; the time since falling, in 'dying')
+ * @property {number} think      walking: time left before he decides what to do next
+ * @property {number} dx         where the blow, roll or charge goes, a unit vector
+ * @property {number} dy
+ * @property {boolean} locked    'windup' or 'aim': has stopped tracking Wenceslas
+ * @property {'roll' | 'charge'} attack  which rush he is aiming or making
+ * @property {number} rolled     distance covered by the rush so far (in 'dying': 1 once he has hit the ground)
+ * @property {number} spin       how far the ball has turned, for drawing
+ * @property {boolean} crashed   'rest': he got here by hitting scenery
+ * @property {number} flash
+ * @property {number} walkT
+ * @property {number} face
+ * @property {{ hp: number }} stats
+ */
+
+/** @typedef {'appear' | 'idle' | 'castRaise' | 'castIce' | 'thunder' | 'dying'} NicholasState
+ *  appear: materialising (not there yet); idle: drifting at a distance; castRaise, castIce: casting; thunder: the ring of warning signs; dying: rising into the light */
+
+/**
+ * St Nicholas, the fourth and final boss. He can be hit in every state but appear and dying.
+ * @typedef {object} Nicholas
+ * @property {number} id
+ * @property {'nicholas'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {NicholasState} state
+ * @property {number} t          time left in this state
+ * @property {number} think      idle: time left before he casts
+ * @property {'raise' | 'ice' | null} last  the last cast, so he doesn't repeat himself
+ * @property {number} close      the closeness timer: seconds Wenceslas has been close, which brings the lightning
+ * @property {number} thunderCd  time left before the lightning can come again
+ * @property {Point[]} skeletonSpots  where the dead will rise (while casting)
+ * @property {Point[]} ghostSpots
+ * @property {number} flash
+ * @property {number} walkT
+ * @property {number} face
+ * @property {{ hp: number }} stats
+ */
+
+/** @typedef {Frosty | MaryBoss | Boleslaus | Nicholas} Boss */
+
+/**
+ * A ghost raised by St Nicholas: it hovers and warns, then launches in a straight line.
+ * @typedef {object} Ghost
+ * @property {number} id
+ * @property {'ghost'} kind
+ * @property {number} x
+ * @property {number} y
+ * @property {number} r
+ * @property {number} hp
+ * @property {number} maxHp
+ * @property {'warn' | 'fly'} state
+ * @property {number} t          'warn': time left
+ * @property {number} dx         where it will go, a unit vector
+ * @property {number} dy
+ * @property {boolean} locked
+ * @property {number} flown      distance flown so far
+ * @property {number} flash
+ * @property {number} bob        for the hovering animation
+ * @property {number} face
+ */
+
+/** @typedef {{ x: number, y: number, w: number, h: number }} Cell */
+/** @typedef {{ cells: Cell[], t: number, struck: number }} IceBarrage  the zones, seconds since the zones appeared, strikes so far */
+/** @typedef {{ x: number, y: number, r: number, t: number }} Thunder  the ring round St Nicholas, and the time left before the strike */
+/** @typedef {Robber | Wolf | Archer | Boss | Ghost} Foe */
 
 /**
  * @typedef {{ kind: 'tree', x: number, y: number, r: number, size: number, variant: number }
@@ -295,6 +383,14 @@ export class World {
     this.archers = [];
     /** @type {Boss | null} */
     this.boss = null;
+    /** @type {Ghost[]} */
+    this.ghosts = [];
+    /** @type {IceBarrage | null} */
+    this.ice = null;
+    /** @type {Thunder | null} */
+    this.thunder = null;
+    /** @type {{ x: number, y: number, r: number, life: number }[]} lightning that has struck, shown for a moment */
+    this.bolts = [];
     this.bossStarted = false;   // the boss fight has begun (or is over): nothing else spawns
     this.bossIntro = 0;         // seconds left to show the "boss arrives" banner
     this.bonus = 0;             // points on top of food and kills (a boss)
@@ -473,8 +569,61 @@ export class World {
   // The boss of this night: Frosty or Mary, whichever bossInfo says (Frosty on a night with no boss of its
   // own, which only the dev console does).
   spawnBoss() {
-    if (bossInfo(this.p.bossNo).kind === 'mary') this.spawnMary();
+    const kind = bossInfo(this.p.bossNo).kind;
+    if (kind === 'mary') this.spawnMary();
+    else if (kind === 'boleslaus') this.spawnBoleslaus();
+    else if (kind === 'nicholas') this.spawnNicholas();
     else this.spawnFrosty();
+  }
+
+  // St Nicholas appears in a golden light somewhere well away from Wenceslas. On a night where the boss isn't him
+  // (the dev console) he is the first, easiest one.
+  spawnNicholas() {
+    let pos = this.freeSpot(60, 20);
+    for (let i = 0; i < 30 && dist(pos, this.king) < 220; i++) pos = this.freeSpot(60, 20);
+    const info = bossInfo(this.p.bossNo);
+    const stats = nicholasStats(info.kind === 'nicholas' ? info.nth : 1);
+    this.boss = {
+      id: nextId++, kind: 'nicholas', x: pos.x, y: pos.y, r: CFG.nicholasRadius, hp: stats.hp, maxHp: stats.hp,
+      state: 'appear', t: CFG.nicholasAppear, think: 0, last: null, close: 0, thunderCd: 0,
+      skeletonSpots: [], ghostSpots: [], flash: 0, walkT: 0, face: 1, stats,
+    };
+    this.bossStarted = true;
+    this.bossIntro = 2.5;
+    this.emit('bossStart');
+  }
+
+  // Prince Boleslaus strides in from the edge of the screen, with his three guards. On a night where the boss isn't him
+  // (the dev console) he is the first, easiest one.
+  spawnBoleslaus() {
+    const pos = this.edgeSpawnAway();
+    const info = bossInfo(this.p.bossNo);
+    const stats = boleslausStats(info.kind === 'boleslaus' ? info.nth : 1);
+    const a = Math.atan2(this.king.y - pos.y, this.king.x - pos.x);
+    this.boss = {
+      id: nextId++, kind: 'boleslaus', x: pos.x, y: pos.y, r: CFG.boleslausRadius, hp: stats.hp, maxHp: stats.hp,
+      state: 'arrive', t: 0, think: 0, dx: Math.cos(a), dy: Math.sin(a), locked: false, attack: 'roll', rolled: 0,
+      spin: 0, crashed: false, flash: 0, walkT: 0, face: Math.cos(a) < 0 ? -1 : 1, stats,
+    };
+    this.bossStarted = true;
+    this.bossIntro = 2.5;
+    this.emit('bossStart');
+    this.spawnGuards(this.boss);
+  }
+
+  // His three guards: ordinary robbers that come in with him and stay close (see updateRobbers).
+  /** @param {Boleslaus} b */
+  spawnGuards(b) {
+    const names = ['Tira', 'Česta', 'Hněvsa'];
+    const n = CFG.boleslausGuards;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + Math.PI / 2;
+      this.robbers.push({
+        id: nextId++, kind: 'robber', x: b.x + Math.cos(a) * 18, y: b.y + Math.sin(a) * 18, r: 4, hp: 1, maxHp: 1,
+        target: null, retarget: 0, windup: 0, atkCd: 0.5, stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1,
+        side: this.rng() < 0.5 ? 1 : -1, guard: true, name: names[i % names.length], post: i,
+      });
+    }
   }
 
   // Mary's ice block rises somewhere on screen, well away from Wenceslas. On a night where the boss isn't
@@ -512,12 +661,21 @@ export class World {
     this.emit('bossStart');
   }
 
-  // Every enemy the sword can hit. A boss only while resting (Frosty dizzy, Mary between attacks).
+  // Whether the sword can hurt a boss now: Frosty and Mary only while they rest, Boleslaus whenever he is on foot
+  // (so not while he rolls or charges, or is dying), St Nicholas whenever he is there (not appearing or dying).
+  /** @param {Boss} b */
+  bossHittable(b) {
+    if (b.kind === 'boleslaus') return b.state !== 'roll' && b.state !== 'charge' && b.state !== 'dying';
+    if (b.kind === 'nicholas') return b.state !== 'appear' && b.state !== 'dying';
+    return b.state === 'rest';
+  }
+
+  // Every enemy the sword can hit. A boss only when bossHittable says so.
   /** @returns {Foe[]} */
   foes() {
     /** @type {Foe[]} */
-    const foes = [...this.robbers, ...this.wolves, ...this.archers];
-    if (this.boss && this.boss.state === 'rest') foes.push(this.boss);
+    const foes = [...this.robbers.filter((r) => !(r.rise !== undefined && r.rise > 0)), ...this.wolves, ...this.archers, ...this.ghosts];
+    if (this.boss && this.bossHittable(this.boss)) foes.push(this.boss);
     return foes;
   }
 
@@ -535,6 +693,8 @@ export class World {
     this.updateWolves(dt);
     this.updateArchers(dt);
     this.updateBoss(dt);
+    this.updateGhosts(dt);
+    this.updateIce(dt);
     this.updateArrows(dt);
     this.updateFood(dt);
     this.updateDelivery(dt);
@@ -612,7 +772,7 @@ export class World {
     }
     // Frosty shrugs off blows while he is not dizzy: a puff of snow, no damage.
     const b = this.boss;
-    if (b && b.state !== 'rest' && b.state !== 'dying' && reach(b)) {
+    if (b && !this.bossHittable(b) && b.state !== 'dying' && reach(b)) {
       k.hit.add(b.id);
       this.puff(b.x, b.y - 14, ['#f4f4f4', '#94b0c2'], 3);
     }
@@ -621,14 +781,22 @@ export class World {
   // A sword hit on a robber, a wolf, an archer or a boss. (nx, ny): direction of the blow.
   /** @param {Foe} foe @param {number} nx @param {number} ny */
   hitFoe(foe, nx, ny) {
-    if (foe.kind === 'frosty' || foe.kind === 'mary') {
+    if (foe.kind === 'ghost' || (foe.kind === 'robber' && foe.undead)) {
+      // the raised dead fall at one hit, and are worth nothing
+      this.destroyUndead(foe);
+      this.emit('hit');
+      return;
+    }
+    if (foe.kind === 'frosty' || foe.kind === 'mary' || foe.kind === 'boleslaus' || foe.kind === 'nicholas') {
       // a boss is too big to knock back, and stays where it is
       foe.hp -= 1;
       foe.flash = 0.12;
       this.emit('hit');
       if (foe.hp > 0) this.puff(foe.x, foe.y - 16, ['#f4f4f4', '#94b0c2'], 6);
       else if (foe.kind === 'frosty') this.killFrosty(foe);
-      else this.killMary(foe);
+      else if (foe.kind === 'mary') this.killMary(foe);
+      else if (foe.kind === 'boleslaus') this.killBoleslaus(foe);
+      else this.killNicholas(foe);
       return;
     }
     foe.hp -= 1;
@@ -747,6 +915,7 @@ export class World {
     const k = this.king;
     const decay = Math.exp(-10 * dt);
     for (const rob of [...this.robbers]) {
+      if (rob.rise !== undefined && rob.rise > 0) { rob.rise -= dt; continue; }   // still climbing out of the ground
       rob.flash -= dt;
       rob.stun -= dt;
       rob.atkCd -= dt;
@@ -760,6 +929,36 @@ export class World {
         rob.retarget = 0.25;
       }
       if (rob.stun > 0) continue;
+      if (rob.guard) {
+        // Boleslaus's guards: they stay at their post by him, facing Wenceslas, until Wenceslas comes close to them or to
+        // him; then they go for Wenceslas like any robber, and go back when he is gone. When Boleslaus falls they run.
+        const boss = this.boss;
+        if (rob.flee || !boss || boss.state === 'dying') {
+          rob.flee = true;
+          const away = rob.x < W / 2 ? -1 : 1;
+          rob.x += away * CFG.robberSpeed * 1.5 * this.speedMul * dt;
+          rob.walkT += dt;
+          rob.face = away;
+          if (rob.x < -14 || rob.x > W + 14) this.robbers.splice(this.robbers.indexOf(rob), 1);
+          continue;
+        }
+        const near = dist(rob, k) < CFG.boleslausGuardAggro || dist(boss, k) < CFG.boleslausGuardAggro;
+        if (rob.windup <= 0 && !near) {
+          const a = ((rob.post ?? 0) / CFG.boleslausGuards) * TAU + Math.PI / 2;
+          const px = boss.x + Math.cos(a) * CFG.boleslausPostRadius, py = boss.y + Math.sin(a) * CFG.boleslausPostRadius;
+          const dd = Math.hypot(px - rob.x, py - rob.y);
+          rob.face = k.x < rob.x ? -1 : 1;
+          if (dd > 3) {
+            const s = this.steer(rob, (px - rob.x) / dd, (py - rob.y) / dd);
+            const sp = CFG.robberSpeed * 1.3 * this.speedMul;   // quicker than usual, to keep up with him
+            rob.x += s.x * Math.min(sp * dt, dd);
+            rob.y += s.y * Math.min(sp * dt, dd);
+            rob.walkT += dt;
+          }
+          continue;
+        }
+        tg = k;
+      }
       const d = dist(rob, tg);
       const reach = rob.r + tg.r + 4;
       if (rob.windup > 0) {
@@ -1062,7 +1261,9 @@ export class World {
     const b = this.boss;
     if (!b) return;
     if (b.kind === 'frosty') this.updateFrosty(b, dt);
-    else this.updateMary(b, dt);
+    else if (b.kind === 'mary') this.updateMary(b, dt);
+    else if (b.kind === 'boleslaus') this.updateBoleslaus(b, dt);
+    else this.updateNicholas(b, dt);
   }
 
   // ---------- Mary ----------
@@ -1289,26 +1490,8 @@ export class World {
       }
       if (b.t <= 0) { b.state = 'roll'; b.rolled = 0; this.emit('frostyRoll'); }
     } else if (b.state === 'roll') {
-      const step = b.stats.rollSpeed * this.speedMul * dt;
-      b.x += b.dx * step;
-      b.y += b.dy * step;
-      b.rolled += step;
-      b.spin += step / b.r;
-      if (this.rng() < 0.6) this.puff(b.x - b.dx * b.r, b.y - 3, ['#f4f4f4', '#94b0c2'], 1);   // a trail of snow
-      // whoever he rolls over
-      if (dist(b, k) < b.r + k.r) this.damage(k, b, CFG.frostyDamage);
-      for (const pg of [...this.pages]) if (dist(b, pg) < b.r + pg.r) this.damage(pg, b, CFG.frostyDamage);
-      // scenery stops him, and he is left reeling
-      let crashed = false;
-      for (const o of this.obstacles) {
-        const q = obsQuery(o, b.x, b.y);
-        const reach = b.r * 0.6;
-        if (q.d < reach) { b.x += q.nx * (reach - q.d); b.y += q.ny * (reach - q.d); crashed = true; }
-      }
-      const x = clamp(b.x, b.r, W - b.r), y = clamp(b.y, HUD_H + 14, H - 3);
-      const edge = x !== b.x || y !== b.y;
-      b.x = x; b.y = y;
-      if (crashed || edge || b.rolled >= CFG.frostyRollDistance) this.startRest(b, crashed, crashed || edge);
+      const end = this.rush(b, dt, b.stats.rollSpeed, CFG.frostyDamage, CFG.frostyRollDistance);
+      if (end) this.startRest(b, end === 'crash', end !== 'end');
     } else {
       b.t -= dt;
       if (b.t <= 0) this.startAim(b);
@@ -1316,6 +1499,505 @@ export class World {
     if (b.state !== 'roll') {
       b.x = clamp(b.x, b.r, W - b.r);
       b.y = clamp(b.y, HUD_H + 14, H - 3);
+    }
+  }
+
+  // One step of a rush in a straight line along (dx, dy): Frosty rolling, or Boleslaus rolling or charging. It
+  // hurts Wenceslas and flattens pages it reaches; scenery or the edge of the screen stops it, and so does the
+  // distance. Returns how it ended: 'crash' (scenery), 'edge', 'end' (the distance), or null if it goes on.
+  /** @param {Frosty | Boleslaus} b @param {number} dt @param {number} speed @param {number} damage @param {number} distance @returns {'crash' | 'edge' | 'end' | null} */
+  rush(b, dt, speed, damage, distance) {
+    const k = this.king;
+    const step = speed * this.speedMul * dt;
+    b.x += b.dx * step;
+    b.y += b.dy * step;
+    b.rolled += step;
+    b.spin += step / b.r;
+    if (this.rng() < 0.6) this.puff(b.x - b.dx * b.r, b.y - 3, ['#f4f4f4', '#94b0c2'], 1);   // a trail of snow
+    // whoever it runs over
+    if (dist(b, k) < b.r + k.r) this.damage(k, b, damage);
+    for (const pg of [...this.pages]) if (dist(b, pg) < b.r + pg.r) this.damage(pg, b, damage);
+    // scenery stops it
+    let crashed = false;
+    for (const o of this.obstacles) {
+      const q = obsQuery(o, b.x, b.y);
+      const reach = b.r * 0.6;
+      if (q.d < reach) { b.x += q.nx * (reach - q.d); b.y += q.ny * (reach - q.d); crashed = true; }
+    }
+    const x = clamp(b.x, b.r, W - b.r), y = clamp(b.y, HUD_H + 14, H - 3);
+    const edge = x !== b.x || y !== b.y;
+    b.x = x; b.y = y;
+    if (crashed) return 'crash';
+    if (edge) return 'edge';
+    return b.rolled >= distance ? 'end' : null;
+  }
+
+  // ---------- St Nicholas ----------
+  //
+  // He appears in a golden light ('appear'), then drifts at a distance ('idle') and can be hit whenever he is there.
+  // Every so often he casts, never the same thing twice running:
+  //   raise the dead  ('castRaise') circles show on the ground, then skeletons (robbers: same club, same speed, one hit)
+  //                   rise round him and hunt Wenceslas, and ghosts appear: they glare (a warning), then launch at him
+  //   ice strike      ('castIce') about half the field is marked as zones; they strike, and strike again, so someone who
+  //                   stays in a zone is hit twice. The strikes hurt everything inside, the undead too.
+  // If Wenceslas stays close for too long (the closeness timer) he surrounds himself with warning signs ('thunder'),
+  // and lightning strikes everything inside the ring.
+  // The raised dead are worth no points: they could otherwise be farmed.
+
+  // How many of each kind of undead are out.
+  skeletonCount() { return this.robbers.filter((r) => r.undead).length; }
+
+  // A skeleton climbs out of the ground at a spot.
+  /** @param {Point} at */
+  raiseSkeleton(at) {
+    this.robbers.push({
+      id: nextId++, kind: 'robber', x: at.x, y: at.y, r: 4, hp: 1, maxHp: 1, target: null, retarget: 0,
+      windup: 0, atkCd: 0.5, stun: 0, flash: 0, kbx: 0, kby: 0, walkT: 0, face: 1,
+      side: this.rng() < 0.5 ? 1 : -1, undead: true, rise: CFG.nicholasRise,
+    });
+    this.puff(at.x, at.y - 2, ['#e8e2cc', '#a89f86', '#566c86'], 10);
+  }
+
+  // A ghost appears at a spot and starts to glare.
+  /** @param {Point} at */
+  raiseGhost(at) {
+    const k = this.king;
+    const a = Math.atan2(k.y - at.y, k.x - at.x);
+    this.ghosts.push({
+      id: nextId++, kind: 'ghost', x: at.x, y: at.y, r: CFG.ghostRadius, hp: 1, maxHp: 1, state: 'warn', t: CFG.ghostWarn,
+      dx: Math.cos(a), dy: Math.sin(a), locked: false, flown: 0, flash: 0, bob: this.rng.range(0, TAU), face: Math.cos(a) < 0 ? -1 : 1,
+    });
+  }
+
+  // One of the raised dead is destroyed.
+  /** @param {Robber | Ghost} e */
+  destroyUndead(e) {
+    if (e.kind === 'ghost') this.ghosts.splice(this.ghosts.indexOf(e), 1);
+    else this.robbers.splice(this.robbers.indexOf(e), 1);
+    this.puff(e.x, e.y - 6, e.kind === 'ghost' ? ['#dfe9f4', '#9fb3c8', '#f4f4f4'] : ['#e8e2cc', '#a89f86', '#f4f4f4'], 12);
+  }
+
+  /** @param {number} dt */
+  updateGhosts(dt) {
+    const k = this.king;
+    for (const gh of [...this.ghosts]) {
+      gh.flash -= dt;
+      gh.bob += dt * 5;
+      if (gh.state === 'warn') {
+        gh.t -= dt;
+        if (!gh.locked) {
+          const d = dist(gh, k) || 1;
+          gh.dx = (k.x - gh.x) / d;
+          gh.dy = (k.y - gh.y) / d;
+          gh.face = gh.dx < 0 ? -1 : 1;
+          if (gh.t <= CFG.ghostLock) gh.locked = true;
+        }
+        if (gh.t <= 0) { gh.state = 'fly'; this.emit('ghostScream'); }
+        continue;
+      }
+      const step = CFG.ghostSpeed * this.speedMul * dt;
+      gh.x += gh.dx * step;
+      gh.y += gh.dy * step;
+      gh.flown += step;
+      if (dist(gh, k) < gh.r + k.r) {
+        this.damage(k, gh, CFG.ghostDamage);
+        this.destroyUndead(gh);
+        continue;
+      }
+      let hit = false;
+      for (const pg of [...this.pages]) {
+        if (dist(gh, pg) < gh.r + pg.r) { this.damage(pg, gh, CFG.ghostDamage); hit = true; break; }
+      }
+      if (hit || gh.flown > CFG.ghostRange || gh.x < -30 || gh.x > W + 30 || gh.y < HUD_H - 40 || gh.y > H + 40) this.destroyUndead(gh);
+    }
+  }
+
+  // ----- the ice barrage -----
+
+  // Which cells of the grid become zones: a checkerboard, alternate columns, or a scatter in which every zone has
+  // a free cell beside it (so there is always somewhere to step).
+  /** @returns {Cell[]} */
+  pickIceCells() {
+    const cols = CFG.nicholasIceCols, rows = CFG.nicholasIceRows;
+    const cw = W / cols, ch = (H - HUD_H) / rows;
+    /** @param {number} c @param {number} r */
+    const cell = (c, r) => ({ x: c * cw, y: HUD_H + r * ch, w: cw, h: ch });
+    const parity = this.rng() < 0.5 ? 0 : 1;
+    const pattern = this.rng.pick(['checker', 'columns', 'scatter']);
+    /** @type {Cell[]} */
+    const out = [];
+    if (pattern === 'scatter') {
+      const want = Math.round(cols * rows * CFG.nicholasIceShare);
+      for (let attempt = 0; attempt < 30; attempt++) {
+        /** @type {[number, number][]} */
+        const all = [];
+        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) all.push([c, r]);
+        for (let i = all.length - 1; i > 0; i--) { const j = this.rng.int(0, i); [all[i], all[j]] = [all[j], all[i]]; }
+        const chosen = new Set(all.slice(0, want).map(([c, r]) => c + ',' + r));
+        /** @param {[number, number]} cr */
+        const hasFree = ([c, r]) => /** @type {[number, number][]} */ ([[1, 0], [-1, 0], [0, 1], [0, -1]]).some(([dc, dr]) => {
+          const nc = c + dc, nr = r + dr;
+          return nc >= 0 && nc < cols && nr >= 0 && nr < rows && !chosen.has(nc + ',' + nr);
+        });
+        if (all.slice(0, want).every(hasFree)) { for (const [c, r] of all.slice(0, want)) out.push(cell(c, r)); return out; }
+      }
+    }
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (pattern === 'columns' ? (c + parity) % 2 === 0 : (c + r + parity) % 2 === 0) out.push(cell(c, r));
+      }
+    }
+    return out;
+  }
+
+  // Whether a point is inside one of the zones.
+  /** @param {Point} e */
+  inIce(e) { return !!this.ice && this.ice.cells.some((c) => e.x >= c.x && e.x < c.x + c.w && e.y >= c.y && e.y < c.y + c.h); }
+
+  // Hit everything that matches a test: Wenceslas and pages are hurt for the damage, and the raised dead are destroyed.
+  /** @param {(e: Point) => boolean} inside @param {number} damage @param {Point} from */
+  hurtWhere(inside, damage, from) {
+    if (inside(this.king)) this.damage(this.king, from, damage);
+    for (const pg of [...this.pages]) if (inside(pg)) this.damage(pg, from, damage);
+    for (const rob of [...this.robbers]) if (rob.undead && inside(rob)) this.destroyUndead(rob);
+    for (const gh of [...this.ghosts]) if (inside(gh)) this.destroyUndead(gh);
+  }
+
+  /** @param {number} dt */
+  updateIce(dt) {
+    const ice = this.ice;
+    if (!ice) return;
+    ice.t += dt;
+    while (ice.struck < 2 && ice.t >= CFG.nicholasIceWarn + ice.struck * CFG.nicholasIceGap) {
+      ice.struck++;
+      this.emit('iceStrike');
+      this.hurtWhere((e) => this.inIce(e), CFG.nicholasIceDamage, this.boss ?? { x: W / 2, y: H / 2 });
+      for (const c of ice.cells) if (this.rng() < 0.6) this.puff(c.x + c.w / 2 + this.rng.range(-20, 20), c.y + c.h / 2 + this.rng.range(-20, 20), ['#73eff7', '#f4f4f4', '#41a6f6'], 2);
+    }
+    if (ice.t >= CFG.nicholasIceWarn + CFG.nicholasIceGap + CFG.nicholasIceLinger) this.ice = null;
+  }
+
+  // ----- the boss -----
+
+  /** @param {Nicholas} b @param {number} dt */
+  driftFromKing(b, dt) {
+    const k = this.king, d = dist(b, k) || 1;
+    let toward = 0;
+    if (d < CFG.nicholasKeepNear) toward = -1;
+    else if (d > CFG.nicholasKeepFar) toward = 1;
+    if (toward !== 0) {
+      const s = this.steer(b, (toward * (k.x - b.x)) / d, (toward * (k.y - b.y)) / d);
+      const sp = CFG.nicholasWalkSpeed * this.speedMul;
+      b.x += s.x * sp * dt;
+      b.y += s.y * sp * dt;
+      b.walkT += dt;
+    }
+    b.face = k.x < b.x ? -1 : 1;
+  }
+
+  /** @param {Nicholas} b */
+  startNicholasIdle(b) {
+    b.state = 'idle';
+    b.think = this.rng.range(CFG.nicholasThinkMin, CFG.nicholasThinkMax);
+  }
+
+  // A good spot for a skeleton to rise: round him, on clear ground, on the screen.
+  /** @param {Nicholas} b @param {number} angle @returns {Point} */
+  raiseSpot(b, angle) {
+    let pos = { x: b.x, y: b.y };
+    for (let i = 0; i < 12; i++) {
+      const r = this.rng.range(CFG.nicholasRaiseRadiusMin, CFG.nicholasRaiseRadiusMax);
+      pos = { x: clamp(b.x + Math.cos(angle + this.rng.range(-0.35, 0.35)) * r, 14, W - 14), y: clamp(b.y + Math.sin(angle + this.rng.range(-0.35, 0.35)) * r, HUD_H + 20, H - 14) };
+      if (this.obstacles.every((o) => obsQuery(o, pos.x, pos.y).d > 10)) return pos;
+    }
+    return pos;
+  }
+
+  /** @param {Nicholas} b @param {number} dt */
+  updateNicholas(b, dt) {
+    const k = this.king;
+    b.flash -= dt;
+    if (b.state === 'dying') { this.updateNicholasDying(b, dt); return; }
+    if (b.state === 'appear') {
+      b.t -= dt;
+      b.face = k.x < b.x ? -1 : 1;
+      if (b.t <= 0) { this.startNicholasIdle(b); this.puff(b.x, b.y - 24, ['#ffcd75', '#f4f4f4'], 14); }
+      return;
+    }
+
+    // the closeness timer: fills while Wenceslas is close, empties faster when he is not
+    b.thunderCd -= dt;
+    if (dist(b, k) < CFG.nicholasCloseRadius) b.close += dt;
+    else b.close = Math.max(0, b.close - CFG.nicholasCloseDrain * dt);
+
+    if (b.state === 'idle') {
+      this.driftFromKing(b, dt);
+      if (b.close >= CFG.nicholasCloseTime && b.thunderCd <= 0) {
+        b.state = 'thunder';
+        b.t = CFG.nicholasThunderWarn;
+        this.thunder = { x: b.x, y: b.y, r: CFG.nicholasThunderRadius, t: b.t };
+        this.emit('frostyWarn');
+      } else {
+        b.think -= dt;
+        if (b.think <= 0) {
+          /** @type {('raise' | 'ice')[]} */
+          const options = [];
+          const room = this.skeletonCount() <= CFG.nicholasMaxSkeletons - CFG.nicholasSkeletons && this.ghosts.length <= CFG.nicholasMaxGhosts - CFG.nicholasGhosts;
+          if (room && b.last !== 'raise') options.push('raise');
+          if (!this.ice && b.last !== 'ice') options.push('ice');
+          if (!options.length) {
+            if (room) options.push('raise'); else if (!this.ice) options.push('ice');
+          }
+          if (!options.length) b.think = 0.5;   // nothing to cast just now
+          else {
+            const cast = this.rng.pick(options);
+            b.last = cast;
+            if (cast === 'raise') {
+              b.state = 'castRaise';
+              b.t = CFG.nicholasRaiseCast;
+              b.skeletonSpots = [];
+              const base = this.rng.range(0, TAU);
+              for (let i = 0; i < CFG.nicholasSkeletons; i++) b.skeletonSpots.push(this.raiseSpot(b, base + (i * TAU) / CFG.nicholasSkeletons));
+              b.ghostSpots = [];
+              for (let i = 0; i < CFG.nicholasGhosts; i++) {
+                const a = base + Math.PI / CFG.nicholasSkeletons + (i * TAU) / CFG.nicholasGhosts;
+                b.ghostSpots.push({ x: clamp(b.x + Math.cos(a) * 38, 14, W - 14), y: clamp(b.y + Math.sin(a) * 30, HUD_H + 20, H - 14) });
+              }
+              this.emit('recruit');
+            } else {
+              b.state = 'castIce';
+              b.t = CFG.nicholasIceCast;
+              this.emit('frostyWarn');
+            }
+          }
+        }
+      }
+    } else if (b.state === 'castRaise') {
+      b.t -= dt;
+      if (b.t <= 0) {
+        for (const at of b.skeletonSpots) this.raiseSkeleton(at);
+        for (const at of b.ghostSpots) this.raiseGhost(at);
+        b.skeletonSpots = []; b.ghostSpots = [];
+        this.startNicholasIdle(b);
+      }
+    } else if (b.state === 'castIce') {
+      b.t -= dt;
+      if (b.t <= 0) {
+        this.ice = { cells: this.pickIceCells(), t: 0, struck: 0 };
+        this.startNicholasIdle(b);
+        b.think = Math.max(b.think, CFG.nicholasIceWarn + CFG.nicholasIceGap + CFG.nicholasIceLinger + 0.4);   // no new cast during the barrage
+      }
+    } else if (b.state === 'thunder') {
+      b.t -= dt;
+      if (this.thunder) this.thunder.t = b.t;
+      if (b.t <= 0 && this.thunder) {
+        const th = this.thunder;
+        this.emit('lightning');
+        this.hurtWhere((e) => Math.hypot(e.x - th.x, e.y - th.y) <= th.r, CFG.nicholasThunderDamage, th);
+        this.puff(th.x, th.y - 20, ['#f4f4f4', '#73eff7', '#ffcd75'], 24);
+        this.bolts.push({ x: th.x, y: th.y, r: th.r, life: 0.3 });
+        this.thunder = null;
+        b.close = 0;
+        b.thunderCd = CFG.nicholasThunderCooldown;
+        this.startNicholasIdle(b);
+      }
+    }
+    this.collide(b);
+    b.x = clamp(b.x, b.r + 4, W - b.r - 4);
+    b.y = clamp(b.y, HUD_H + 22, H - 6);
+  }
+
+  // St Nicholas is beaten: the dead crumble, the zones and the lightning clear, and he rises into the light and fades; then
+  // the night ends. As with the other bosses the points are his at once and nothing can hurt Wenceslas meanwhile.
+  /** @param {Nicholas} b */
+  killNicholas(b) {
+    b.state = 'dying';
+    b.t = CFG.nicholasDeathTime;
+    this.victory = true;
+    this.arrows.length = 0;
+    this.kills++;
+    this.bonus += CFG.pointsBoss;
+    this.emit('kill');
+    this.floatText(b.x, b.y - 56, '+' + (CFG.pointsKill + CFG.pointsBoss) * this.pointsMul(), '#ffcd75');
+    for (const rob of [...this.robbers]) if (rob.undead) this.destroyUndead(rob);
+    for (const gh of [...this.ghosts]) this.destroyUndead(gh);
+    this.ice = null;
+    this.thunder = null;
+  }
+
+  /** @param {Nicholas} b @param {number} dt */
+  updateNicholasDying(b, dt) {
+    b.t -= dt;
+    if (this.rng() < 0.8) this.puff(b.x + this.rng.range(-10, 10), b.y - this.rng.range(0, 44), ['#ffcd75', '#f4f4f4', '#c9953a'], 1);   // gold motes, rising
+    if (b.t <= 0) {
+      this.boss = null;
+      this.done = true;
+      this.emit('nightComplete');
+    }
+  }
+
+  // ---------- Prince Boleslaus ----------
+  //
+  // He strides in from the edge with his three guards ('arrive'), then walks at Wenceslas ('walk'), and every so
+  // often decides what to do:
+  //   close by         a sword blow: the sword goes up for a long time ('windup', with a fan on the ground showing
+  //                    where it will fall; it follows Wenceslas, then locks), then the blow ('swing', over in a
+  //                    moment), then he stands open ('recover'). His reach is longer than Wenceslas's, so to hit him
+  //                    you have to be in range of the blow: dart in, hit, and dart out before it falls.
+  //   far away         usually a roll, like Frosty's ('aim' with a line on the ground, then 'roll'), and rarely a
+  //                    charge with a lance ('aim', then 'charge'), which is faster. Both leave him winded ('rest').
+  // He can be hit in every state but roll, charge and dying (see bossHittable).
+
+  /** @param {Boleslaus} b */
+  startWalk(b) {
+    b.state = 'walk';
+    b.think = this.rng.range(CFG.boleslausThinkMin, CFG.boleslausThinkMax);
+  }
+
+  /** @param {Boleslaus} b @param {number} dt */
+  trackKing(b, dt) {
+    void dt;
+    const k = this.king, d = dist(b, k) || 1;
+    b.dx = (k.x - b.x) / d;
+    b.dy = (k.y - b.y) / d;
+    b.face = b.dx < 0 ? -1 : 1;
+  }
+
+  /** @param {Boleslaus} b @param {number} dt @param {number} stopAt  stop walking this close to Wenceslas */
+  walkAtKing(b, dt, stopAt) {
+    const k = this.king, d = dist(b, k);
+    if (d > stopAt) {
+      const s = this.steer(b, (k.x - b.x) / d, (k.y - b.y) / d);
+      const sp = CFG.boleslausWalkSpeed * this.speedMul;
+      b.x += s.x * sp * dt;
+      b.y += s.y * sp * dt;
+      b.walkT += dt;
+      if (Math.abs(s.x) > 0.1) b.face = s.x < 0 ? -1 : 1;
+    } else b.face = k.x < b.x ? -1 : 1;
+  }
+
+  // The blow: anything in the fan, within his reach, is hit.
+  /** @param {Boleslaus} b */
+  swordBlow(b) {
+    const aim = Math.atan2(b.dy, b.dx);
+    /** @param {{ x: number, y: number, r: number }} e */
+    const caught = (e) => {
+      const d = dist(b, e);
+      if (d > CFG.boleslausReach + e.r) return false;
+      if (d < 1) return true;
+      return Math.abs(angDiff(Math.atan2(e.y - b.y, e.x - b.x), aim)) <= CFG.boleslausArc;
+    };
+    if (caught(this.king)) this.damage(this.king, b, CFG.boleslausSwordDamage);
+    for (const pg of [...this.pages]) if (caught(pg)) this.damage(pg, b, CFG.boleslausSwordDamage);
+    this.puff(b.x + b.dx * 40, b.y - 10 + b.dy * 40, ['#f4f4f4', '#8a929a'], 6);
+  }
+
+  /** @param {Boleslaus} b @param {number} dt */
+  updateBoleslaus(b, dt) {
+    const k = this.king;
+    b.flash -= dt;
+    if (b.state === 'dying') { this.updateBoleslausDying(b, dt); return; }
+
+    if (b.state === 'arrive') {
+      b.t += dt;
+      this.walkAtKing(b, dt, 0);
+      const inside = b.x > 40 && b.x < W - 40 && b.y > HUD_H + 40 && b.y < H - 30;
+      // he is on the field once he is in from the edge, or as soon as Wenceslas is in reach (or he is stuck: begin anyway)
+      if (inside || b.t > 8 || dist(b, k) < CFG.boleslausReach) this.startWalk(b);
+      return;
+    }
+
+    if (b.state === 'walk') {
+      this.walkAtKing(b, dt, CFG.boleslausReach * 0.75);
+      b.think -= dt;
+      if (b.think <= 0) {
+        const d = dist(b, k);
+        if (d <= CFG.boleslausReach * 0.95) {
+          b.state = 'windup'; b.t = CFG.boleslausWindup; b.locked = false;
+          this.emit('frostyWarn');
+        } else if (d > CFG.boleslausFarDistance) {
+          b.attack = this.rng() < CFG.boleslausChargeChance ? 'charge' : 'roll';
+          b.state = 'aim';
+          b.t = b.attack === 'charge' ? CFG.boleslausChargeTelegraph : CFG.boleslausRollTelegraph;
+          b.locked = false;
+          this.emit('frostyWarn');
+        } else b.think = 0.25;   // too far for a blow and too near for a rush: keep walking
+      }
+    } else if (b.state === 'windup') {
+      b.t -= dt;
+      if (!b.locked) {
+        this.trackKing(b, dt);
+        if (b.t <= CFG.boleslausLockTime) b.locked = true;
+      }
+      if (b.t <= 0) {
+        b.state = 'swing'; b.t = CFG.boleslausSwing;
+        this.emit('swing');
+        this.swordBlow(b);
+      }
+    } else if (b.state === 'swing') {
+      b.t -= dt;
+      if (b.t <= 0) { b.state = 'recover'; b.t = CFG.boleslausRecover; }
+    } else if (b.state === 'recover' || b.state === 'rest') {
+      b.t -= dt;
+      if (b.t <= 0) this.startWalk(b);
+    } else if (b.state === 'aim') {
+      b.t -= dt;
+      if (!b.locked) {
+        this.trackKing(b, dt);
+        if (b.t <= CFG.boleslausLockTime) b.locked = true;
+      }
+      if (b.t <= 0) { b.state = b.attack; b.rolled = 0; this.emit('frostyRoll'); }
+    } else {
+      // 'roll' or 'charge'
+      const charging = b.state === 'charge';
+      const end = this.rush(b, dt, charging ? CFG.boleslausChargeSpeed : CFG.boleslausRollSpeed,
+        charging ? CFG.boleslausChargeDamage : CFG.boleslausRollDamage, charging ? CFG.boleslausChargeDistance : CFG.boleslausRollDistance);
+      if (end) {
+        const impact = end !== 'end';
+        b.state = 'rest';
+        b.t = (charging ? CFG.boleslausChargeRest : CFG.boleslausRollRest) + (impact ? CFG.boleslausCrashBonus : 0);
+        b.crashed = impact;
+        this.puff(b.x, b.y - 8, ['#f4f4f4', '#94b0c2'], impact ? 16 : 8);
+        if (impact) this.emit('frostyCrash');
+      }
+    }
+    if (b.state !== 'roll' && b.state !== 'charge') {
+      this.collide(b);
+      b.x = clamp(b.x, b.r, W - b.r);
+      b.y = clamp(b.y, HUD_H + 14, H - 3);
+    }
+  }
+
+  // Boleslaus is beaten: he staggers, kneels and topples; his guards lose heart and run; the night ends when he lies still.
+  // As with the other bosses the points are his at once and nothing can hurt Wenceslas meanwhile.
+  /** @param {Boleslaus} b */
+  killBoleslaus(b) {
+    b.state = 'dying';
+    b.t = CFG.boleslausDeathStagger + CFG.boleslausDeathKneel + CFG.boleslausDeathFall + CFG.boleslausDeathLie;
+    b.rolled = 0;
+    this.victory = true;
+    this.arrows.length = 0;
+    this.kills++;
+    this.bonus += CFG.pointsBoss;
+    this.emit('kill');
+    this.floatText(b.x, b.y - 46, '+' + (CFG.pointsKill + CFG.pointsBoss) * this.pointsMul(), '#ffcd75');
+    for (const rob of this.robbers) if (rob.guard) rob.flee = true;
+  }
+
+  /** @param {Boleslaus} b @param {number} dt */
+  updateBoleslausDying(b, dt) {
+    b.t -= dt;
+    const total = CFG.boleslausDeathStagger + CFG.boleslausDeathKneel + CFG.boleslausDeathFall + CFG.boleslausDeathLie;
+    const elapsed = total - b.t;
+    if (b.rolled === 0 && elapsed >= CFG.boleslausDeathStagger + CFG.boleslausDeathKneel + CFG.boleslausDeathFall) {
+      b.rolled = 1;
+      this.emit('hit');                                                       // he hits the ground
+      this.puff(b.x, b.y - 2, ['#f4f4f4', '#94b0c2', '#8a929a'], 14);
+    }
+    if (b.t <= 0) {
+      this.boss = null;
+      this.done = true;
+      this.emit('nightComplete');
     }
   }
 
@@ -1589,5 +2271,7 @@ export class World {
       }
     }
     this.shower = this.shower.filter((c) => c.life > 0);
+    for (const bl of this.bolts) bl.life -= dt;
+    this.bolts = this.bolts.filter((bl) => bl.life > 0);
   }
 }

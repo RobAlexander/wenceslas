@@ -59,7 +59,7 @@ while it's open. Type a command and press Enter. Up and Down recall earlier comm
 |---|---|
 | `night N` / `night N hard` | Start a run on night N (1 to 12) |
 | `win` | Finish the current night |
-| `spawn robber\|wolf\|archer\|mary\|frosty\|page\|food [count]` | Add things to the current night |
+| `spawn robber\|wolf\|archer\|mary\|frosty\|boleslaus\|nicholas\|page\|food [count]` | Add things to the current night |
 | `kill` | Remove every enemy and arrow, with no points |
 | `hp N` | Set Wenceslas's health |
 | `god` | Toggle: Wenceslas takes no damage |
@@ -74,8 +74,8 @@ Commands are defined in `js/main.js`, and the console itself is `js/devconsole.j
 
 Sound starts at the first key press or click, because browsers don't allow it sooner.
 
-- **Effects** are 17 sampled sounds in `audio/sfx/` (mono, 8-bit, 11 kHz WAV, Amiga style).
-  Seven are trimmed from the CC0 "50 RPG sound effects" pack by Kenney (via OpenGameArt) and ten are synthesised.
+- **Effects** are 20 sampled sounds in `audio/sfx/` (mono, 8-bit, 11 kHz WAV, Amiga style).
+  Seven are trimmed from the CC0 "50 RPG sound effects" pack by Kenney (via OpenGameArt) and thirteen are synthesised.
   Every file is listed with its source, author and licence in `CREDITS.md`.
 - **Music** is played by a small four-channel tracker-style player (`js/music.js`) on the Web Audio API. There are no
   music files: the song is pattern data in `js/music-data.js`, and the instrument samples (bell, choir, strings, bass,
@@ -104,6 +104,8 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
 - `tests/frosty.mjs`: boss nights and Frosty (which nights, the telegraph and its lock, rolling, resting, only hurtable while dizzy, ten hits to kill, scaling).
+- `tests/nicholas.mjs`: St Nicholas (the rotation, hittable except appearing and dying, drifting at a distance, the cast alternation and limits, skeletons rising and hunting, ghosts warning, locking and launching, the ice zones' patterns, timings and two strikes, the lightning timer and ring and cooldown, the ascension, no points for the dead).
+- `tests/boleslaus.mjs`: Prince Boleslaus and his guards (the rotation, the guards' post and aggro, the sword's telegraph, lock and fan, the dart-in-and-out timing, the roll and the rare charge, hittable only on foot, the fall).
 - `tests/mary.mjs`: the boss Mary (which nights, the ice rising and splitting, the three attacks and their warnings, only hurtable while resting, the freeze-and-sink ending, scaling).
 - `tests/sword.mjs`: the sword's real reach against the arc that's drawn. `tests/tuning.mjs`: sanity checks on every number in `js/tuning.js`.
 - `tests/boot.mjs`: boots the real `main.js` under stubbed browser globals and plays the whole flow with synthetic input: title, how to play, nights, pause, ending, name entry, high scores, game over, plus touch gestures, a fake gamepad, the portrait pause and the dev console.
@@ -156,8 +158,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
   archers back away between shots, but at 34 pixels a second to Wenceslas's 85, so he can run them down; one hit kills.
   Arrows reuse the sword-swing and hit sounds (archers have no sound of their own yet). The numbers are in
   `js/tuning.js` (`archer*` and `arrow*`).
-- Every third night (3, 6, 9, 12) ends with a boss: Frosty on nights 3 and 9, Mary on 6 and 12 (`CURVES.boss.maryEvery`), each
-  a little tougher the second time. Delivering the last food doesn't end the night: the boss comes, and nothing else spawns
+- Every third night (3, 6, 9, 12) ends with a boss, in turn (`CURVES.boss.order`): Frosty on night 3, Mary on 6, Prince Boleslaus on 9, and St Nicholas on 12 (each appears once; if you repeat a boss in `CURVES.boss.order` the repeat is a little tougher). Delivering the last food doesn't end the night: the boss comes, and nothing else spawns
   while they are out (what is already there stays). Frosty, a giant snowman: he
   lumbers in from the edge of the screen, and nothing else spawns while he's out (what's already there stays). He repeats: lean
   back and shake for 1 s with a red "!" (a line of dots on the ground shows where the roll will go; it follows Wenceslas, then
@@ -167,13 +168,13 @@ Sound starts at the first key press or click, because browsers don't allow it so
   tree, rock or wall, and hitting scenery leaves him dizzy 0.5 s longer. It takes 10 hits. When he falls he bursts into a
   shower of snowballs over three seconds (`frostyDeathTime`), shedding from the top down in four loud bursts; the night clock
   stops, nothing can hurt Wenceslas, and only when the last of him is gone does the night end and the end-of-night box appear.
-  He is worth a 200-point bonus (added to the enemies total, awarded as he falls) and a par time 30 s longer. Each later boss night he's a little tougher (one more
-  hit, 10 px/s faster, 0.1 s less rest, 0.05 s less warning), so night 12's is 13 hits, but not a different fight. Frosty
+  He is worth a 200-point bonus (added to the enemies total, awarded as he falls) and a par time 30 s longer. If he were to come a second time he'd be a little tougher (one more
+  hit, 10 px/s faster, 0.1 s less rest, 0.05 s less warning), but not a different fight. Frosty
   isn't on the How to play screen; a short banner appears when he arrives. He has three sounds of his own: a low
   groaning warning as he starts to aim (`frostyWarn`), a rumble as he rolls (`frostyRoll`) and a crash when a roll ends in
   a tree, rock, wall or the edge of the screen (`frostyCrash`); his hits and defeat reuse the hit and kill sounds. His music
   is described under Sound and music. The numbers are in `js/tuning.js` (`CURVES.boss` and `frosty*`).
-- Mary, the second boss (nights 6 and 12), is the Mary in the close-fitting Santa suit at twice the size. Her ice block rises at
+- Mary, the second boss (night 6), is the Mary in the close-fitting Santa suit at twice the size. Her ice block rises at
   least 150 pixels from Wenceslas (2.4 s) and splits open (1.3 s); she can't be hurt until she is out. Then she repeats: **warning
   lines** (1 s, shorter later; a red "!" and a raised snowball), one of three **attacks**, and a **rest**, never the same attack
   twice running. A *blast* is a wide fan of 9 snowballs, twice, 0.4 s apart: the fan's edges show on the ground, follow Wenceslas
@@ -182,12 +183,51 @@ Sound starts at the first key press or click, because browsers don't allow it so
   so you have to find the gaps (ticks on the ground show the first wave). Snowballs are arrows that are white: slower than an
   arrow, 1 damage, they hit the first of Wenceslas or a page, trees stop them and rocks and walls don't. After each attack she rests
   for 1.8 s, trudging toward Wenceslas at 26 pixels a second (stopping 55 pixels away) with stars round her head: that is the only
-  time she can be hurt, and it is room for 3 or 4 swings. It takes 12 hits (13 on night 12, with faster snowballs, a 0.1 s shorter
+  time she can be hurt, and it is room for 3 or 4 swings. It takes 12 hits (13 a second time, with faster snowballs, a 0.1 s shorter
   rest and a 0.05 s shorter warning). When she falls she is frozen: ice grows over her (0.9 s), holds (0.6 s), and the block sinks
   into the ground (1.5 s); only then does the night end. As with Frosty the 200-point bonus is awarded as she falls, the night clock
   stops and nothing can hurt Wenceslas. Her arrival stinger (`mary.mid`, 5.3 s) plays alone as the ice rises, and the boss theme starts as it ends; the entrance (rise, split and the first warning) is timed to come out about as long, so the theme arrives as she first attacks (`maryRise` and `marySplit` set that). She has no sounds of
   her own yet (her throws reuse the sword-swing sound and her hits the hit sound), and she isn't on the How to play screen. The
   numbers are in `js/tuning.js` (`mary*` and `snowball*`).
+- Prince Boleslaus of Bohemia, the third boss (night 9), strides in from the edge with three guards and walks at Wenceslas at
+  62 pixels a second (he walks at 85), and **can be hit whenever he is on foot**: only his roll, his charge and his fall are
+  untouchable. Every 0.5 to 1.1 s he decides: if Wenceslas is in reach he swings his sword; if Wenceslas is far (over 130 pixels)
+  he rolls (like Frosty, at 190 pixels a second for up to 280 pixels, a rest of 1.6 s after) or, rarely (15% of the time), charges
+  with a lance (330 pixels a second for up to 520, 3 damage, a 2 s rest). The **sword** is heavily telegraphed: he raises it for
+  1.2 s while a fan on the ground (dotted edges and an arc, red) shows where the blow will fall. It follows Wenceslas, then locks
+  0.35 s before the blow (bolder and orange), so a late sidestep works. The blow covers about 100 degrees and **reaches 80 pixels,
+  which is farther than Wenceslas's own sword**, so being near enough to hit him means being near enough to be hit: dart in, hit
+  him two or three times during the windup, and dart out before it falls. A blow does 2 damage (and hurts a page in the fan), and
+  he is open for 0.9 s after it. Hits don't interrupt him. His roll and charge are like Frosty's: a line shows the path, they hurt
+  Wenceslas and flatten pages, and scenery or the edge stops them with a longer rest. It takes 16 hits. His **guards**, Tira, Česta
+  and Hněvsa, are ordinary robbers (one hit, an ordinary club) that stay within about 48 pixels of him, facing Wenceslas, and only
+  go for Wenceslas when he comes within 70 pixels of them or of Boleslaus; then they return to their posts. Killing them first is
+  sensible but not required. Their names are kept in the data, but not shown: the 3x5 font has no accented letters. When Boleslaus
+  falls he staggers, kneels and topples over (2.6 s), the guards run off, and only then does the night end; as with the other bosses
+  the 200-point bonus comes as he falls, the clock stops and nothing can hurt Wenceslas. He uses the boss theme with no arrival
+  stinger yet, and the existing sounds (the Frosty warning for his windups, the sword swing for the blow, the rolling rumble and the
+  crash). The numbers are in `js/tuning.js` (`boleslaus*`).
+- St Nicholas, the fourth and final boss (night 12), is about 48 pixels tall (the tallest): a bishop with a halo, a white beard,
+  crimson and gold robes, a white stole marked with gold crosses, a book in one arm and the other hand raised in blessing. He
+  appears in a golden light (1.5 s, not yet hittable), then **can be hit whenever he is there**. He drifts slowly (30 pixels a
+  second) to keep 90 to 150 pixels from Wenceslas, and every 1.2 to 2.0 s casts one of two things, never the same twice running.
+  **Raise the dead** (1 s of casting, with circles on the ground): 3 skeletons climb out of the ground (0.8 s, inert and
+  untouchable while they do) and then hunt Wenceslas exactly like robbers; 2 ghosts appear and glare for 0.9 s (shaking, red eyes,
+  a "!" and a line toward Wenceslas, tracking him and locking 0.3 s before the launch), then launch in a straight line at
+  250 pixels a second, screaming, over scenery. A ghost that reaches Wenceslas does 2 damage and flattens a page; a ghost or a
+  skeleton falls at one hit. He won't raise more than 6 skeletons or 3 ghosts at once, and the dead are worth no points and don't
+  count as kills, so they can't be farmed. **Ice strike** (0.8 s cast): the field is a grid of 8 by 4 cells and half of them, in
+  a checkerboard, alternate columns or a scatter that always leaves a free cell beside every zone, are marked in blue with a red
+  dotted border for 1.2 s, then strike, and strike again 1.0 s later (longer than Wenceslas's 0.8 s invulnerability, so standing
+  in one zone throughout costs two hits), 1 damage each. The strikes hurt everything inside, pages and his own undead too. He
+  doesn't cast again during a barrage. **Lightning:** while Wenceslas is within 70 pixels of him a closeness timer fills (his halo
+  flickers faster as it does); it empties 1.5 times faster when Wenceslas is away. At 3 s, once he is idle and a 5 s cooldown is
+  up, a ring of warning signs forms round him (95 pixels out, 1.3 s), then lightning strikes everything inside it: 2 damage, and
+  it destroys the undead there. Dart in, hit, and dart out. It takes 20 hits. When he falls, the dead crumble, any ice or
+  lightning clears, and he rises into a column of light and fades (3.2 s) before the night ends; as with the other bosses the
+  200-point bonus comes as he falls, the clock stops and nothing can hurt Wenceslas. He uses the boss theme with no arrival
+  stinger yet. His sounds: `ghostScream`, `iceStrike` and `lightning` are new; raising the dead reuses the recruit bell and the
+  warnings the Frosty groan. The numbers are in `js/tuning.js` (`nicholas*` and `ghost*`).
 
 ## Licence
 

@@ -16,9 +16,12 @@ Every file is converted to mono, 8-bit, 11025 Hz WAV.
 | `audio/sfx/frostyRoll.wav` | Frosty rolling | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/frostyWarn.wav` | Frosty winds up to roll (the warning) | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/gameover.wav` | game over | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
+| `audio/sfx/ghostScream.wav` | a ghost raised by St Nicholas launches (the scream) | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/hit.wav` | sword hits a robber | trimmed from `chop.ogg` in "50 RPG sound effects" | https://opengameart.org/content/50-rpg-sound-effects | Kenney Vleugels (kenney.nl) | CC0 1.0 |
 | `audio/sfx/hurt.wav` | Wenceslas hurt | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
+| `audio/sfx/iceStrike.wav` | St Nicholas's ice zones strike | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/kill.wav` | robber killed | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
+| `audio/sfx/lightning.wav` | St Nicholas's lightning strikes | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |
 | `audio/sfx/menuMove.wav` | menu cursor moves | trimmed from `metalClick.ogg` in "50 RPG sound effects" | https://opengameart.org/content/50-rpg-sound-effects | Kenney Vleugels (kenney.nl) | CC0 1.0 |
 | `audio/sfx/menuSelect.wav` | menu choice | trimmed from `metalLatch.ogg` in "50 RPG sound effects" | https://opengameart.org/content/50-rpg-sound-effects | Kenney Vleugels (kenney.nl) | CC0 1.0 |
 | `audio/sfx/nightComplete.wav` | night complete | synthesised by `tools/build_sounds.py` | this repository | the project | CC0 1.0 (dedicated to the public domain) |

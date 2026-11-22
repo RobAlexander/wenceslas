@@ -78,7 +78,8 @@ export const CURVES = {
   },
   boss: {
     everyNights: 3,            // every this-many nights ends with a boss fight (3, 6, 9, 12)
-    maryEvery: 2,              // every this-many-th boss is Mary instead of Frosty (2: the 2nd and 4th, nights 6 and 12). 0 for never.
+    order: [0, 1, 2, 3],       // which boss on each boss night, in turn, starting again after the last: 0 Frosty, 1 Mary,
+                               // 2 Prince Boleslaus, 3 St Nicholas. [0, 1, 2, 3] gives each once, St Nicholas last.
   },
 };
 
@@ -192,6 +193,98 @@ export const CFG = {
   maryDeathSink: 1.5,       // seconds the block takes to sink into the ground; then the night ends
   snowballLife: 3.5,        // most seconds a snowball flies
   snowballDamage: 1,
+
+  // ---- Prince Boleslaus of Bohemia, the third boss ----
+  // He walks at Wenceslas, and can be hit whenever he is on foot. He swings his sword (a long, heavy telegraph:
+  // dart in, hit him, dart out), or rolls at you like Frosty, or rarely charges with a lance, faster than the
+  // roll. Only the roll and the charge cannot be hit. Three guards (robbers) stay close to him.
+  boleslausHp: 16,          // sword hits to kill him
+  boleslausHpStep: 1,       // more health each later time
+  boleslausRadius: 10,      // how big he is, for the sword
+  boleslausWalkSpeed: 62,   // walking at Wenceslas, and in from the edge. Keep this under kingSpeed (85) so you can duck out.
+  boleslausThinkMin: 0.5,   // how long he walks on between one attack and deciding the next
+  boleslausThinkMax: 1.1,
+  boleslausFarDistance: 130, // farther away than this he rolls or charges instead of walking up to swing
+  // the sword
+  boleslausWindup: 1.2,     // seconds with the sword raised (the telegraph; the fan on the ground shows where it will fall)
+  boleslausLockTime: 0.35,  // he stops tracking Wenceslas this long before the blow, so a late sidestep works
+  boleslausSwing: 0.18,     // the blow itself
+  boleslausRecover: 0.9,    // seconds after a blow before he does anything
+  boleslausReach: 80,       // how far the blow reaches from him. Keep it past Wenceslas's own reach (swingRange 60 plus his
+                            // size) so that being near enough to hit him means being near enough to be hit: you must duck out.
+  boleslausArc: 0.9,        // radians either side of where he aims (0.9 is a fan about 100 degrees wide)
+  boleslausSwordDamage: 2,
+  // the roll, like Frosty's
+  boleslausRollTelegraph: 0.9,
+  boleslausRollSpeed: 190,
+  boleslausRollDistance: 280,
+  boleslausRollDamage: 2,   // (a page has 2 health, so it dies)
+  boleslausRollRest: 1.6,   // winded after a roll
+  // the lance charge
+  boleslausChargeChance: 0.15, // the share of his long-range attacks that are a charge: rare
+  boleslausChargeTelegraph: 1.3,
+  boleslausChargeSpeed: 330, // faster than the roll
+  boleslausChargeDistance: 520,
+  boleslausChargeDamage: 3,
+  boleslausChargeRest: 2.0, // winded after a charge
+  boleslausCrashBonus: 0.5, // extra rest if he crashes into scenery or the edge of the screen
+  // his guards: robbers (the same club, speed and hit points) that stay by him until Wenceslas gets close
+  boleslausGuards: 3,
+  boleslausPostRadius: 48,  // how far from him they loiter
+  boleslausGuardAggro: 70,  // they go for Wenceslas when he is this close to them or to Boleslaus
+  // when he falls: stagger, kneel, topple, lie still, then the night ends
+  boleslausDeathStagger: 0.8,
+  boleslausDeathKneel: 0.6,
+  boleslausDeathFall: 0.5,
+  boleslausDeathLie: 0.7,
+
+  // ---- St Nicholas, the fourth and final boss ----
+  // He appears, then drifts at a distance and can be hit whenever he is there. Every so often he raises the dead
+  // (skeletons, which are robbers, and ghosts, which warn and then launch at Wenceslas) or calls down an ice
+  // barrage on about half the field (it strikes twice). If Wenceslas stays close to him too long, a ring of
+  // warning signs forms round him and lightning strikes everything inside it.
+  nicholasHp: 20,           // sword hits to kill him
+  nicholasHpStep: 1,        // more health each later time
+  nicholasRadius: 12,       // how big he is, for the sword
+  nicholasAppear: 1.5,      // seconds he takes to appear, in a golden light (he can't be hit yet)
+  nicholasWalkSpeed: 30,    // drifting to keep his distance. Keep this well under kingSpeed (85).
+  nicholasKeepNear: 90,     // he backs away when Wenceslas is closer than this...
+  nicholasKeepFar: 150,     // ...and drifts closer when he is farther than this
+  nicholasThinkMin: 1.2,    // seconds he drifts between one cast and the next
+  nicholasThinkMax: 2.0,
+  // raising the dead
+  nicholasRaiseCast: 1.0,   // seconds of casting, with circles on the ground where the dead will rise
+  nicholasSkeletons: 3,     // raised each time
+  nicholasGhosts: 2,
+  nicholasMaxSkeletons: 6,  // he won't raise the dead while that would take either past its limit
+  nicholasMaxGhosts: 3,
+  nicholasRise: 0.8,        // seconds a skeleton takes to climb out of the ground (it can't be hit or act yet)
+  nicholasRaiseRadiusMin: 55,  // skeletons rise this far from him, at least...
+  nicholasRaiseRadiusMax: 115, // ...and at most
+  ghostWarn: 0.9,           // seconds a ghost shakes and glares (the warning) before it launches
+  ghostLock: 0.3,           // it stops following Wenceslas this long before it launches, so a sidestep works
+  ghostSpeed: 250,          // the launch: fast. Over twice kingSpeed.
+  ghostDamage: 2,           // (it flattens a page too)
+  ghostRadius: 6,           // how big it is, for touching Wenceslas and pages
+  ghostRange: 900,          // the farthest a ghost flies before it fades
+  // the ice barrage
+  nicholasIceCast: 0.8,     // seconds of casting before the zones show
+  nicholasIceCols: 8,       // the field is a grid this many cells across...
+  nicholasIceRows: 4,       // ...and this many down
+  nicholasIceShare: 0.5,    // the share of cells that are zones, for a scatter (a checkerboard or alternate columns is exactly half)
+  nicholasIceWarn: 1.2,     // seconds the zones warn before they first strike
+  nicholasIceGap: 1.0,      // seconds between the two strikes. Longer than kingInvuln, so staying in a zone for both costs two hits.
+  nicholasIceLinger: 0.4,   // seconds the zones stay after the second strike
+  nicholasIceDamage: 1,     // each strike
+  // lightning for staying too close
+  nicholasCloseRadius: 70,  // Wenceslas this close to him fills the closeness timer...
+  nicholasCloseTime: 3.0,   // ...and at this many seconds the lightning comes
+  nicholasCloseDrain: 1.5,  // the timer empties this many times faster than it fills when Wenceslas is not close
+  nicholasThunderRadius: 95, // the ring of warning signs, and the lightning inside it
+  nicholasThunderWarn: 1.3,
+  nicholasThunderDamage: 2,
+  nicholasThunderCooldown: 5.0, // before it can come again
+  nicholasDeathTime: 3.2,   // seconds he takes to rise into the light and fade, before the night ends
 
   // ---- Bosses ----
   // Frosty, a giant snowman, ends every boss night. After the last food is delivered he lumbers in, then

@@ -270,14 +270,14 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   audio.setBoss(null, 'mary');
   assert.equal(m.running, false, 'it stops when she falls');
 }
-// ...and a boss with no stinger gets the theme at once
+// ...and a boss with no stinger (Prince Boleslaus, for now) gets the theme at once
 {
   const { BOSS_SONG } = await import('../js/music-data.js');
   const { audio, log } = await setup();
   audio.unlock(); await tick();
   audio.onState('play', 'title');
   const before = log.started.length;
-  audio.setBoss(1, 'nobody');
+  audio.setBoss(1, 'boleslaus');   // (no stinger yet)
   assert.equal(audio.music.song, BOSS_SONG);
   assert.ok(log.started.length - before > 10, 'the first phrase is scheduled at once: ' + (log.started.length - before));
 }

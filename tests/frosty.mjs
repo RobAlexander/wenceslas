@@ -323,12 +323,13 @@ for (const state of ['arrive', 'aim', 'rest']) {
   w.damage(w.king, { x: 0, y: 0 }, 3);
   assert.equal(w.king.hp, CFG.kingMaxHp, 'not hurt while he dies');
 }
-// ...the second time he comes (night 9; Mary has night 6) he has a few more hits
+// ...he comes once, on night 3 (St Nicholas has 12); a second time would be a little tougher, and the dev console's
+// spawn on another night gives his first, easiest form
 {
-  const { w } = quietWorld(9, 15);
+  const { w } = quietWorld(12, 15);
   w.spawnFrosty();
-  assert.equal(w.boss.maxHp, frostyStats(2).hp);
-  assert.ok(w.boss.maxHp > 10);
+  assert.equal(w.boss.maxHp, frostyStats(1).hp);
+  assert.ok(frostyStats(2).hp > frostyStats(1).hp);
 }
 
 // ---- hard mode is quicker

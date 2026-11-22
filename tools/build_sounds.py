@@ -201,6 +201,28 @@ def synth_frosty_crash():  # Frosty hits a tree, a wall or the edge of the world
         mix(s, bell(rng.uniform(1800, 3600), 0.12, decay=24, index=1.5), at, 0.22)
     return s
 
+def synth_ghost_scream():  # a ghost launches: a high wailing shriek that rises, with a rattling edge
+    n = 0.8
+    s = chirp(540, 1750, n, decay=1.4, tremolo=0.55, harmonics=(1.0, 0.75, 0.5, 0.3))
+    mix(s, voice(420, 980, n, [(950, 140), (1900, 220), (2900, 300)], breath=0.35, decay=2.2, roughness=0.55), 0.0, 0.8)
+    mix(s, noise(n, lp=0.9, decay=3.0, hp=0.5), 0.0, 0.35)
+    return s
+
+def synth_ice_strike():  # a zone of ice strikes: a glassy crack over a low thud, and ice tinkling
+    s = thump(0.55, f0=90, f1=34, decay=8)
+    mix(s, noise(0.22, lp=0.75, decay=16, hp=0.5), 0.0, 0.95)
+    for at in (0.0, 0.03, 0.07, 0.12, 0.19, 0.27):
+        mix(s, bell(rng.uniform(2400, 4600), 0.22, decay=18, index=1.3), at, 0.3)
+    return s
+
+def synth_lightning():  # lightning: a sharp crack, then thunder rolling away
+    s = noise(0.09, lp=0.96, decay=34)
+    mix(s, noise(0.9, lp=0.1, decay=4.5), 0.04, 1.6)
+    mix(s, thump(0.7, f0=75, f1=26, decay=5), 0.05, 0.9)
+    for i in range(12):                                   # the fizzle as the bolt fades
+        mix(s, noise(0.04, lp=0.8, decay=30, hp=0.4), 0.03 + i * 0.025, 0.3)
+    return s
+
 SYNTH = {
     'kill':          (synth_kill,           'robber killed'),
     'hurt':          (synth_hurt,           'Wenceslas hurt'),
@@ -213,6 +235,9 @@ SYNTH = {
     'frostyWarn':    (synth_frosty_warn,    'Frosty winds up to roll (the warning)'),
     'frostyRoll':    (synth_frosty_roll,    'Frosty rolling'),
     'frostyCrash':   (synth_frosty_crash,   'Frosty crashes into something'),
+    'ghostScream':   (synth_ghost_scream,   'a ghost raised by St Nicholas launches (the scream)'),
+    'iceStrike':     (synth_ice_strike,     'St Nicholas\'s ice zones strike'),
+    'lightning':     (synth_lightning,      'St Nicholas\'s lightning strikes'),
 }
 
 # ---------------------------------------------------------------- output

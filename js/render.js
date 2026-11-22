@@ -1,7 +1,7 @@
 // Drawing. Everything is drawn at 640x360 and scaled up by CSS.
 
 import { W, H, HUD_H, CFG } from './config.js';
-import { PAL, disc } from './sprites.js';
+import { PAL, disc, BOLESLAUS_HAND } from './sprites.js';
 import { drawText, textWidth } from './font.js';
 import { makeCanvas } from './canvas.js';
 
@@ -15,6 +15,9 @@ import { makeCanvas } from './canvas.js';
 /** @typedef {import('./world.js').Arrow} Arrow */
 /** @typedef {import('./world.js').MaryBoss} MaryBoss */
 /** @typedef {import('./world.js').Boss} Boss */
+/** @typedef {import('./world.js').Boleslaus} Boleslaus */
+/** @typedef {import('./world.js').Nicholas} Nicholas */
+/** @typedef {import('./world.js').Ghost} Ghost */
 /** @typedef {import('./world.js').Frosty} Frosty */
 /** @typedef {import('./world.js').OldMan} OldMan */
 /** @typedef {import('./world.js').Obstacle} Obstacle */
@@ -192,7 +195,21 @@ function drawWall(ctx, o) {
 /** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Robber} rob */
 function drawRobber(ctx, spr, rob) {
   const moving = rob.windup <= 0 && rob.stun <= 0;
-  blitChar(ctx, spr.robber, rob, { moving, flash: rob.flash > 0 });
+  const sheet = rob.undead ? spr.skeleton : spr.robber;
+  if (rob.rise !== undefined && rob.rise > 0) {
+    // a skeleton climbing out of the ground: the bottom of it shows, more as it rises
+    const p = 1 - rob.rise / CFG.nicholasRise;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(Math.round(rob.x) - 12, Math.round(rob.y) - 24, 24, 24 + 1);
+    ctx.clip();
+    blitChar(ctx, sheet, { x: rob.x, y: rob.y + Math.round((1 - p) * sheet.h), walkT: 0, face: rob.face }, { moving: false });
+    ctx.restore();
+    ctx.fillStyle = PAL.m;
+    ctx.fillRect(Math.round(rob.x) - 6, Math.round(rob.y), 12, 1);        // the disturbed earth
+    return;
+  }
+  blitChar(ctx, sheet, rob, { moving, flash: rob.flash > 0 });
   // club
   const hx = rob.x + rob.face * 4, hy = rob.y - 6;
   if (rob.windup > 0) {
@@ -436,6 +453,304 @@ function drawFrosty(ctx, spr, b, time) {
   } else if (b.state === 'rest') drawDizzyStars(ctx, cx, top, time);
 }
 
+// A straight sword in a hand at (hx, hy), pointing at an angle: an iron blade with a lit edge, a bronze crossguard
+// across it near the hand, and a pommel.
+/** @param {CanvasRenderingContext2D} ctx @param {number} hx @param {number} hy @param {number} angle @param {number} len */
+function drawBlade(ctx, hx, hy, angle, len) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  line(ctx, hx + c * 4, hy + s * 4, hx + c * len, hy + s * len, PAL.i);
+  line(ctx, hx + c * 4 - s, hy + s * 4 + c, hx + c * (len - 1) - s, hy + s * (len - 1) + c, PAL.n);   // the lit edge
+  line(ctx, hx + c * 4 - s * 3, hy + s * 4 + c * 3, hx + c * 4 + s * 3, hy + s * 4 - c * 3, PAL.z);   // the crossguard
+  ctx.fillStyle = PAL.Z;
+  ctx.fillRect(Math.round(hx - c), Math.round(hy - s), 2, 2);                                            // the pommel
+}
+
+// Prince Boleslaus. He walks like Wenceslas, the sword held forward and a little down. Winding up for a blow he
+// raises it over his head while a fan on the ground shows where it will fall (dotted edges and an arc, red, then
+// bolder and orange once it has locked); then the blow sweeps across the fan. For a roll or a charge a line on
+// the ground shows the path; he curls into a ball for the roll, and lowers a lance for the charge. Beaten, he
+// staggers, kneels, and topples.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Boleslaus} b @param {number} time */
+function drawBoleslaus(ctx, spr, b, time) {
+  const f = spr.boleslaus, cx = Math.round(b.x), by = Math.round(b.y);
+  const aim = Math.atan2(b.dy, b.dx);
+  // the warning on the ground
+  if (b.state === 'windup') {
+    const reach = CFG.boleslausReach;
+    warnLine(ctx, b.x, b.y, aim - CFG.boleslausArc, 14, reach, b.locked);
+    warnLine(ctx, b.x, b.y, aim + CFG.boleslausArc, 14, reach, b.locked);
+    ctx.fillStyle = b.locked ? PAL.o : PAL.r;
+    const size = b.locked ? 3 : 2;
+    for (let a = -CFG.boleslausArc; a <= CFG.boleslausArc + 0.001; a += 0.12) {
+      ctx.fillRect(Math.round(b.x + Math.cos(aim + a) * reach), Math.round(b.y - 3 + Math.sin(aim + a) * reach), size, size);
+    }
+  } else if (b.state === 'aim') {
+    warnLine(ctx, b.x, b.y, aim, 16, b.attack === 'charge' ? CFG.boleslausChargeDistance : CFG.boleslausRollDistance, b.locked);
+  }
+
+  if (b.state === 'roll') {
+    // a ball of heavy brown mantle, with bronze brooches, an iron helmet and a dark boot turning round its edge
+    const r = Math.round(b.r), cy = by - r;
+    disc(ctx, cx, cy, r + 1, PAL.a);
+    disc(ctx, cx - 1, cy - 1, r, PAL.b);
+    disc(ctx, cx + 3, cy + 3, r - 4, PAL.m);
+    const turn = (b.dx < 0 ? -1 : 1) * b.spin;
+    /** @type {[number, number, number, number, string][]} angle offset, radius, width, height, colour */
+    const bits = [[0, 8, 4, 4, PAL.z], [2.1, 8, 4, 4, PAL.z], [1.0, 9, 6, 4, PAL.i], [3.1, 9, 4, 3, PAL.h], [4.2, 9, 5, 3, PAL.a], [5.2, 8, 3, 3, PAL.e]];
+    for (const [off, rad, bw, bh, col] of bits) {
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(cx + Math.cos(turn + off) * rad - bw / 2), Math.round(cy + Math.sin(turn + off) * rad - bh / 2), bw, bh);
+    }
+    return;
+  }
+
+  /** @param {boolean} white */
+  const img = (white) => {
+    const fr = f.frames[b.state === 'walk' || b.state === 'arrive' ? Math.floor(b.walkT * 7) % 2 : 0];
+    // the sprite faces left; flipped, it faces right
+    return b.face < 0 ? (white ? fr.white : fr.normal) : white ? fr.whiteFlipped : fr.flipped;
+  };
+  const walking = b.state === 'walk' || b.state === 'arrive';
+  const bob = walking && Math.floor(b.walkT * 7) % 2 ? 1 : 0;
+  const flash = b.flash > 0 || (b.state === 'dying' && Math.floor(time * 16) % 2 === 0 && b.t > CFG.boleslausDeathKneel + CFG.boleslausDeathFall + CFG.boleslausDeathLie);
+
+  if (b.state === 'dying') {
+    const total = CFG.boleslausDeathStagger + CFG.boleslausDeathKneel + CFG.boleslausDeathFall + CFG.boleslausDeathLie;
+    const e = total - b.t;
+    const kneel = e < CFG.boleslausDeathStagger ? 0 : Math.min(1, (e - CFG.boleslausDeathStagger) / CFG.boleslausDeathKneel);
+    const fall = e < CFG.boleslausDeathStagger + CFG.boleslausDeathKneel ? 0 : Math.min(1, (e - CFG.boleslausDeathStagger - CFG.boleslausDeathKneel) / CFG.boleslausDeathFall);
+    const shake = e < CFG.boleslausDeathStagger ? Math.round(Math.sin(time * 70) * 2) : 0;
+    ctx.save();
+    ctx.translate(cx + shake, by + 1);
+    ctx.rotate(b.face * fall * (Math.PI / 2));
+    const hh = Math.round(f.h * (1 - 0.3 * kneel));                          // kneeling: shorter
+    ctx.drawImage(img(flash), Math.round(-f.w / 2), -hh, f.w, hh);
+    ctx.restore();
+    // the sword he has dropped
+    if (kneel > 0) drawBlade(ctx, cx + b.face * 16, by - 2, b.face < 0 ? Math.PI * 0.95 : Math.PI * 0.05, 14);
+    return;
+  }
+
+  // the lance, lowered along the path, before and during a charge
+  if (b.state === 'charge' || (b.state === 'aim' && b.attack === 'charge')) {
+    const hx = cx + b.dx * 6, hy = by - 12 + b.dy * 4;
+    line(ctx, hx - b.dx * 6, hy - b.dy * 4, hx + b.dx * 38, hy + b.dy * 24, PAL.b);       // the shaft
+    line(ctx, hx - b.dx * 6, hy - b.dy * 4 - 1, hx + b.dx * 38, hy + b.dy * 24 - 1, PAL.m);
+    line(ctx, hx + b.dx * 34, hy + b.dy * 22, hx + b.dx * 44, hy + b.dy * 28, PAL.n);       // the iron head
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(Math.round(hx + b.dx * 28 - 1), Math.round(hy + b.dy * 19 - 1), 3, 3);     // a small pennant
+  }
+
+  // the body
+  let lean = 0;
+  if (b.state === 'charge') lean = b.dx < 0 ? -2 : 2;                         // leaning into the charge
+  const x = cx + lean + (b.state === 'windup' && b.locked ? Math.round(Math.sin(time * 80)) : 0);
+  ctx.drawImage(img(b.flash > 0), Math.round(x - f.w / 2), by - f.h + 1 - bob);
+  if (b.state === 'charge') {
+    for (let i = 1; i <= 3; i++) {                                              // speed lines
+      ctx.fillStyle = PAL.w;
+      ctx.fillRect(Math.round(b.x - b.dx * (12 + i * 7)), Math.round(b.y - 6 - i * 3 + (i % 2) * 6), 4, 1);
+    }
+  }
+
+  // the sword
+  if (b.state === 'charge' || (b.state === 'aim' && b.attack === 'charge')) return;   // the lance is in his hands
+  const hx = b.x + b.face * -BOLESLAUS_HAND.x, hy = b.y + BOLESLAUS_HAND.y - bob;
+  const down = b.face < 0 ? Math.PI - 0.5 : 0.5;                                      // forward and a little down
+  const up = b.face < 0 ? Math.PI * 1.5 : -Math.PI / 2;                               // straight up
+  if (b.state === 'windup') {
+    const p = Math.min(1, 1 - b.t / CFG.boleslausWindup);
+    const q = Math.min(1, p * 1.6);                                                   // raised in the first part of the windup, then held
+    drawBlade(ctx, hx, hy, down + (up - down) * q, 24);
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(cx - 1, by - f.h - 6, 3, 5);
+    ctx.fillRect(cx - 1, by - f.h + 0, 3, 2);                                          // "!" telegraph
+  } else if (b.state === 'swing') {
+    const q = 1 - b.t / CFG.boleslausSwing;                                            // 0 to 1 across the blow
+    const ang = aim - CFG.boleslausArc + 2 * CFG.boleslausArc * q;
+    drawBlade(ctx, hx, hy, ang, 30);
+    // the swoosh across the fan
+    ctx.fillStyle = PAL.w;
+    for (let a = -CFG.boleslausArc; a <= -CFG.boleslausArc + 2 * CFG.boleslausArc * q; a += 0.08) {
+      for (const rr of [46, 56, 66]) ctx.fillRect(Math.round(b.x + Math.cos(aim + a) * rr), Math.round(b.y - 8 + Math.sin(aim + a) * rr), 2, 2);
+    }
+  } else if (b.state === 'recover' || b.state === 'rest') {
+    drawBlade(ctx, hx, hy, b.face < 0 ? Math.PI * 0.62 : Math.PI * 0.38, 16);       // dropped to the ground, heavy
+    if (b.state === 'rest') drawDizzyStars(ctx, cx, by - f.h + 1, time);
+  } else {
+    drawBlade(ctx, hx, hy, down, 18);
+  }
+}
+
+// A ring of dots on the ground.
+/** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y @param {number} r @param {string} color @param {number} [size] @param {number} [step] radians between dots */
+function dotRing(ctx, x, y, r, color, size = 2, step = 0.18) {
+  ctx.fillStyle = color;
+  for (let a = 0; a < Math.PI * 2; a += step) ctx.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y - 3 + Math.sin(a) * r), size, size);
+}
+
+// Everything St Nicholas puts on the ground: the circles where the dead will rise, the ice zones (blue, with a red dotted
+// border while they warn, then a white flash and ice at each strike), and the ring of warning signs before the lightning.
+/** @param {CanvasRenderingContext2D} ctx @param {World} world @param {number} time */
+function drawNicholasGround(ctx, world, time) {
+  const b = world.boss;
+  if (b && b.kind === 'nicholas' && b.state === 'castRaise') {
+    for (const at of b.skeletonSpots) dotRing(ctx, at.x, at.y, 9, PAL.P, 2, 0.5);
+    for (const at of b.ghostSpots) dotRing(ctx, at.x, at.y, 8, PAL.n, 2, 0.6);
+  }
+  const ice = world.ice;
+  if (ice) {
+    const warn = CFG.nicholasIceWarn, gap = CFG.nicholasIceGap;
+    const sinceStrike = ice.struck > 0 ? ice.t - (warn + (ice.struck - 1) * gap) : Infinity;
+    const flashing = sinceStrike < 0.16;
+    for (const c of ice.cells) {
+      const x = Math.round(c.x), y = Math.round(c.y), w = Math.round(c.w), h = Math.round(c.h);
+      ctx.fillStyle = flashing ? 'rgba(244,244,244,0.75)' : ice.struck > 0 ? 'rgba(115,239,247,0.38)' : 'rgba(115,239,247,0.22)';
+      ctx.fillRect(x, y, w, h);
+      // the border: red dots while warning, orange once it has struck once (it will strike again)
+      ctx.fillStyle = ice.struck === 0 ? PAL.r : PAL.o;
+      for (let i = 0; i < w; i += 6) { ctx.fillRect(x + i, y, 3, 2); ctx.fillRect(x + i, y + h - 2, 3, 2); }
+      for (let j = 0; j < h; j += 6) { ctx.fillRect(x, y + j, 2, 3); ctx.fillRect(x + w - 2, y + j, 2, 3); }
+      if (ice.struck > 0) {
+        // ice shards standing in the zone, taller just after a strike
+        const grow = flashing ? 1 : 0.6;
+        ctx.fillStyle = PAL.C;
+        for (let i = 12; i < w; i += 22) for (let j = 14; j < h; j += 26) {
+          const sx = x + i + ((i * 7 + j) % 5), sy = y + j + ((i + j * 3) % 7), sh = Math.round(9 * grow);
+          for (let k2 = 0; k2 < sh; k2++) ctx.fillRect(sx - Math.floor((sh - k2) / 4), sy - k2, Math.max(1, Math.ceil((sh - k2) / 4) * 2 - 1), 1);
+        }
+      } else if (Math.floor(time * 6) % 2) {
+        ctx.fillStyle = 'rgba(244,244,244,0.14)';
+        ctx.fillRect(x + 2, y + 2, w - 4, h - 4);                        // the warning pulses
+      }
+    }
+  }
+  const th = world.thunder;
+  if (th) {
+    const locked = th.t < 0.35;
+    dotRing(ctx, th.x, th.y, th.r, locked ? PAL.o : PAL.r, locked ? 3 : 2, 0.2);
+    // warning signs round him: a yellow triangle with a red mark, turning to bolder as it nears
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + time * 0.4, sx = Math.round(th.x + Math.cos(a) * th.r), sy = Math.round(th.y - 3 + Math.sin(a) * th.r);
+      ctx.fillStyle = PAL.k; ctx.fillRect(sx - 3, sy - 4, 7, 7);
+      ctx.fillStyle = PAL.y; ctx.fillRect(sx - 2, sy - 3, 5, 5);
+      ctx.fillStyle = PAL.r; ctx.fillRect(sx, sy - 2, 1, 2); ctx.fillRect(sx, sy + 1, 1, 1);
+    }
+  }
+}
+
+// Lightning, for a moment after it strikes: jagged bolts from the sky into the ring, and a white flash inside it.
+/** @param {CanvasRenderingContext2D} ctx @param {World} world */
+function drawBolts(ctx, world) {
+  for (const bl of world.bolts) {
+    const f = Math.min(1, bl.life / 0.3);
+    ctx.fillStyle = `rgba(244,244,244,${(0.5 * f).toFixed(2)})`;
+    for (let dy = -bl.r; dy <= bl.r; dy += 3) {                              // a flash filling the ring
+      const half = Math.round(Math.sqrt(Math.max(0, bl.r * bl.r - dy * dy)));
+      ctx.fillRect(Math.round(bl.x - half), Math.round(bl.y - 3 + dy), half * 2, 3);
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + bl.r, tx = bl.x + Math.cos(a) * bl.r * (i % 2 ? 0.55 : 0.95), ty = bl.y + Math.sin(a) * bl.r * (i % 2 ? 0.55 : 0.95);
+      let px = tx + (i - 3) * 6, py = HUD_H;
+      ctx.fillStyle = PAL.w;
+      for (let seg = 1; seg <= 8; seg++) {
+        const nx = tx + (px - tx) * (1 - seg / 8) + ((seg * 37 + i * 11) % 9) - 4, ny = HUD_H + ((ty - HUD_H) * seg) / 8;
+        line(ctx, px, py, nx, ny, seg % 2 ? PAL.w : PAL.C);
+        px = nx; py = ny;
+      }
+    }
+  }
+}
+
+// A ghost: a pale wisp that bobs while it hovers; in its warning it shakes with red eyes and a "!" and a line shows where
+// it will launch; flying it streaks, with a fading trail behind it.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Ghost} gh @param {number} time */
+function drawGhost(ctx, spr, gh, time) {
+  const set = gh.state === 'warn' ? spr.ghostWarn : spr.ghost;
+  const fr = set[Math.floor(time * 4 + gh.bob) % 2];
+  const bob = Math.sin(gh.bob) * 2;
+  if (gh.state === 'warn') {
+    warnLine(ctx, gh.x, gh.y - 5, Math.atan2(gh.dy, gh.dx), 14, 170, gh.locked);
+  }
+  const flip = gh.face < 0;
+  const shake = gh.state === 'warn' ? Math.round(Math.sin(time * 60) * (1 + (1 - gh.t / CFG.ghostWarn) * 2)) : 0;
+  if (gh.state === 'fly') {
+    for (let i = 4; i >= 1; i--) {
+      ctx.globalAlpha = 0.12 * (5 - i);
+      ctx.drawImage(flip ? fr.flipped : fr.img, Math.round(gh.x - gh.dx * i * 9 - fr.w / 2), Math.round(gh.y - gh.dy * i * 9 - fr.h - 4));
+    }
+  }
+  ctx.globalAlpha = gh.flash > 0 ? 1 : 0.88;
+  ctx.drawImage(flip ? fr.flipped : fr.img, Math.round(gh.x - fr.w / 2 + shake), Math.round(gh.y - fr.h - 4 + bob));
+  ctx.globalAlpha = 1;
+  if (gh.state === 'warn') {
+    ctx.fillStyle = PAL.r;
+    ctx.fillRect(Math.round(gh.x) - 1, Math.round(gh.y - fr.h - 14), 2, 4);
+    ctx.fillRect(Math.round(gh.x) - 1, Math.round(gh.y - fr.h - 9), 2, 2);                // "!" telegraph
+  }
+}
+
+// St Nicholas. He appears in a golden light, and stands and sways at his hem; casting, his hands glow, purple for the
+// dead and blue for ice; the closer Wenceslas stays, the more his halo flickers (the lightning is coming); beaten, he
+// rises into a column of light and fades.
+/** @param {CanvasRenderingContext2D} ctx @param {Sprites} spr @param {Nicholas} b @param {number} time */
+function drawNicholas(ctx, spr, b, time) {
+  const f = spr.nicholas, cx = Math.round(b.x), by = Math.round(b.y);
+  const fr = f.frames[Math.floor(b.walkT * 3) % 2];
+  let alpha = 1, lift = 0;
+  if (b.state === 'appear') alpha = 1 - b.t / CFG.nicholasAppear;
+  if (b.state === 'dying') {
+    const p = 1 - b.t / CFG.nicholasDeathTime;
+    alpha = Math.max(0, 1 - p * 1.05);
+    lift = Math.round(p * 30);
+    const col = 0.45 * (1 - p);
+    ctx.fillStyle = `rgba(255,230,160,${col.toFixed(2)})`;
+    ctx.fillRect(cx - 16, by - 90, 32, 92);                                   // the column of light
+    ctx.fillStyle = `rgba(255,255,255,${(0.35 * (1 - p)).toFixed(2)})`;
+    ctx.fillRect(cx - 8, by - 90, 16, 92);
+  } else if (b.state === 'appear') {
+    ctx.fillStyle = `rgba(255,230,160,${(0.35 * (1 - alpha)).toFixed(2)})`;
+    ctx.fillRect(cx - 14, by - 80, 28, 82);
+  }
+  // casting: glowing hands
+  if (b.state === 'castRaise' || b.state === 'castIce') {
+    const col = b.state === 'castRaise' ? PAL.P : PAL.C;
+    for (let i = 0; i < 6; i++) {
+      const a = time * 6 + i * 1.05;
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(cx - 22 + Math.cos(a) * 5), Math.round(by - 38 + Math.sin(a) * 6), 2, 2);   // round the raised hand
+      ctx.fillRect(Math.round(cx + 17 + Math.cos(a + 2) * 5), Math.round(by - 20 + Math.sin(a + 2) * 5), 2, 2);   // and the book
+    }
+  }
+  // the closeness: the halo flickers as the lightning nears
+  const near = b.close / CFG.nicholasCloseTime;
+  if (near > 0.4 && b.state === 'idle') {
+    ctx.fillStyle = Math.floor(time * (6 + near * 14)) % 2 ? PAL.w : PAL.y;
+    dotRing(ctx, cx, by - 40 + 3, 11, ctx.fillStyle, 2, 0.35);
+  }
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(b.flash > 0 ? whiteCopy(fr.normal) : fr.normal, Math.round(cx - f.w / 2), by - f.h + 1 - lift);
+  ctx.globalAlpha = 1;
+}
+
+// A white copy of a sprite, for the flash when something is hit (kept, so it is only made once).
+/** @type {Map<HTMLCanvasElement, HTMLCanvasElement>} */
+const whites = new Map();
+/** @param {HTMLCanvasElement} img */
+function whiteCopy(img) {
+  let w = whites.get(img);
+  if (!w) {
+    const { canvas, ctx } = makeCanvas(img.width, img.height);
+    ctx.drawImage(img, 0, 0);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, img.width, img.height);
+    w = canvas;
+    whites.set(img, w);
+  }
+  return w;
+}
+
 // A snowball: a white blob with a dark edge, so it shows on snow. `big` is the larger kind.
 /** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y */
 function drawSnowball(ctx, x, y, big = false) {
@@ -548,6 +863,8 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
     ctx.drawImage(s.img, Math.round(f.x - s.w / 2), Math.round(f.y - s.h - pop + Math.sin(f.t * 3) * 0.6));
   }
 
+  drawNicholasGround(ctx, world, t);
+
   // y-sorted scene
   /** @type {{ y: number, draw: () => void }[]} drawn back to front */
   const items = [];
@@ -577,12 +894,21 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
           const dug = boss.state === 'rise' || boss.state === 'split';
           shadow(ctx, boss.x, boss.y - 1, dug ? 30 : 17);
           drawMary(ctx, spr, boss, world.time);
+        } else if (boss.kind === 'boleslaus') {
+          shadow(ctx, boss.x, boss.y - 1, boss.state === 'roll' ? 24 : 18);
+          drawBoleslaus(ctx, spr, boss, world.time);
+        } else if (boss.kind === 'nicholas') {
+          if (boss.state !== 'appear') shadow(ctx, boss.x, boss.y - 1, 22);
+          drawNicholas(ctx, spr, boss, world.time);
         } else {
           shadow(ctx, boss.x, boss.y - 1, boss.state === 'roll' ? 24 : 20);
           drawFrosty(ctx, spr, boss, world.time);
         }
       },
     });
+  }
+  for (const gh of world.ghosts) {
+    items.push({ y: gh.y, draw: () => { shadow(ctx, gh.x, gh.y - 1, 7); drawGhost(ctx, spr, gh, world.time); } });
   }
   for (const c of world.shower) {
     items.push({
@@ -611,6 +937,7 @@ export function drawWorld(ctx, world, spr, ground, snow, t) {
   for (const it of items) it.draw();
 
   drawSwingArc(ctx, k);
+  drawBolts(ctx, world);
 
   for (const p of world.particles) {
     ctx.fillStyle = p.color;
@@ -675,7 +1002,7 @@ export function drawHud(ctx, world, spr, score) {
   const boss = world.boss;
   if (boss && boss.state !== 'dying') {
     const bw = 200, bx = Math.round((W - bw) / 2), by = H - 16;
-    drawText(ctx, boss.kind.toUpperCase(), W / 2, by - 12, PAL.w, { align: 'center' });
+    drawText(ctx, boss.kind === 'nicholas' ? 'ST NICHOLAS' : boss.kind.toUpperCase(), W / 2, by - 12, PAL.w, { align: 'center' });
     ctx.fillStyle = PAL.k;
     ctx.fillRect(bx - 1, by - 1, bw + 2, 10);
     ctx.fillStyle = PAL.D;

@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import { World } from '../js/world.js';
 import { makeRng } from '../js/rng.js';
 import { nightParams, bossInfo, maryStats, CFG, NIGHTS } from '../js/config.js';
-import { CURVES } from '../js/tuning.js';
 
 const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
 
@@ -41,9 +40,9 @@ const until = (w, state, max = 6) => {
 };
 const balls = (w) => w.arrows.filter((a) => a.snow);
 
-// ---- which night has which boss: Frosty, Mary, Frosty, Mary (each a little tougher the second time)
+// ---- which night has which boss: Frosty, Mary, Boleslaus, St Nicholas (once each)
 assert.deepEqual([3, 6, 9, 12].map((n) => bossInfo(nightParams(n).bossNo)), [
-  { kind: 'frosty', nth: 1 }, { kind: 'mary', nth: 1 }, { kind: 'frosty', nth: 2 }, { kind: 'mary', nth: 2 },
+  { kind: 'frosty', nth: 1 }, { kind: 'mary', nth: 1 }, { kind: 'boleslaus', nth: 1 }, { kind: 'nicholas', nth: 1 },
 ]);
 assert.equal(bossInfo(0).kind, 'frosty', 'with no boss tonight (the dev console) she and Frosty are the first, easiest');
 for (let n = 1; n <= NIGHTS; n++) assert.equal(nightParams(n).bossNo > 0, n % 3 === 0);
@@ -76,7 +75,7 @@ for (let n = 1; n <= NIGHTS; n++) assert.equal(nightParams(n).bossNo > 0, n % 3 
   w.king.god = true; w.delivered = w.p.foodTarget - 1; w.line = [{ food: 'bread' }];
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
-  assert.equal(w.boss?.kind, 'frosty', 'and Frosty again on night 9');
+  assert.equal(w.boss?.kind, 'boleslaus', 'and Prince Boleslaus on night 9');
 }
 
 // ---- nothing else spawns during the fight
@@ -321,15 +320,7 @@ function near(a, b, eps) { assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`); }
   assert.ok(events.includes('nightComplete'));
 }
 
-// ---- the second time (night 12) she has a little more health
-{
-  const { w } = quietWorld(12, 16);
-  w.spawnMary();
-  assert.equal(w.boss.maxHp, maryStats(2).hp);
-  assert.ok(w.boss.maxHp > CFG.maryHp);
-  assert.equal(w.boss.stats.ballSpeed, maryStats(2).ballSpeed);
-}
-// ...and the dev console's spawn on a night that isn't hers gives the first, easiest one
+// ---- she appears once, on night 6; the dev console's spawn on another night gives her first, easiest form
 {
   const { w } = quietWorld(2, 17);
   w.spawnMary();
@@ -353,5 +344,4 @@ function near(a, b, eps) { assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`); }
   assert.equal(w.done, true, 'a king who chases her while she rests beats her');
 }
 
-assert.ok(CURVES.boss.maryEvery >= 0);
 console.log('mary: all tests passed');
