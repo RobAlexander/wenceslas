@@ -69,8 +69,7 @@ function plot(ctx, str, x, y, color, s) {
   ctx.fillStyle = color;
   for (let i = 0; i < str.length; i++) {
     const g = G[/** @type {keyof typeof G} */ (str[i])] || G['?'];
-    for (let r = 0; r < 5; r++) {
-      const row = g[r];
+    for (const [r, row] of g.entries()) {
       for (let c = 0; c < 3; c++) if (row[c] === '#') ctx.fillRect(x + (i * 4 + c) * s, y + r * s, s, s);
     }
   }

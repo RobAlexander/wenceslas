@@ -90,12 +90,16 @@ export function bindKey(bindings, id, slot, code) {
   /** @type {string | null} */
   let lost = null;
   for (const a of ACTIONS) {
-    next[a.id] = bindings[a.id].map((c) => {
+    const keys = bindings[a.id];
+    if (!keys) throw new Error('bindings has no entry for ' + a.id);   // they always come from cleanBindings, which fills every function
+    next[a.id] = keys.map((c) => {
       if (code && c === code) { if (a.id !== id) lost = a.label; return ''; }
       return c;
     });
   }
-  next[id][slot] = code;
+  const slots = next[id];
+  if (!slots) throw new Error('no function called ' + id);
+  slots[slot] = code;
   return { bindings: next, lost };
 }
 
@@ -117,9 +121,10 @@ export function keyName(code) {
   if (!code) return '---';
   const named = NAMES[code];
   if (named) return named;
-  let m = /^Key([A-Z])$/.exec(code) || /^Digit(\d)$/.exec(code) || /^F(\d\d?)$/.exec(code);
-  if (m) return code.startsWith('F') ? code : m[1];
-  m = /^Numpad(\d)$/.exec(code);
-  if (m) return 'NUM ' + m[1];
+  const plain = (/^Key([A-Z])$/.exec(code) ?? /^Digit(\d)$/.exec(code))?.[1];   // KeyW -> W, Digit4 -> 4
+  if (plain) return plain;
+  if (/^F\d\d?$/.test(code)) return code;
+  const keypad = /^Numpad(\d)$/.exec(code)?.[1];
+  if (keypad) return 'NUM ' + keypad;
   return code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 9) || '?';
 }

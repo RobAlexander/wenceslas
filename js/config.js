@@ -65,6 +65,7 @@ export function bossInfo(bossNo) {
   const order = CURVES.boss.order;
   const n = Math.max(1, bossNo);
   const which = order[(n - 1) % order.length];
+  if (which === undefined) throw new Error('CURVES.boss.order is empty');
   let nth = 0;
   for (let i = 0; i < n; i++) if (order[i % order.length] === which) nth++;
   return { kind: BOSS_KINDS[which] ?? 'frosty', nth: Math.max(1, nth) };

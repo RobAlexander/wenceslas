@@ -22,8 +22,13 @@ export function makeRng(seed) {
   const range = (lo, hi) => lo + next() * (hi - lo);
   /** @param {number} lo @param {number} hi */
   const int = (lo, hi) => lo + Math.floor(next() * (hi - lo + 1)); // inclusive
+  // arr must not be empty (and must not hold undefined, which would read as a miss)
   /** @type {Rng['pick']} */
-  const pick = (arr) => arr[Math.floor(next() * arr.length)];
+  const pick = (arr) => {
+    const v = arr[Math.floor(next() * arr.length)];
+    if (v === undefined) throw new RangeError('pick from an empty array');
+    return v;
+  };
   // Object.assign, not a cast, so the compiler checks that every part of Rng is there.
   return Object.assign(next, { range, int, pick });
 }

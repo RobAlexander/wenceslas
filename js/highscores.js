@@ -83,7 +83,8 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
   function qualifies(score) {
     if (!(score > 0)) return false;
     const list = load();
-    return list.length < MAX_SCORES || score > list[list.length - 1].score;
+    const lowest = list[list.length - 1];
+    return list.length < MAX_SCORES || (lowest !== undefined && score > lowest.score);
   }
 
   // Returns the new entry's rank (1-based), or 0 if it didn't make the table.

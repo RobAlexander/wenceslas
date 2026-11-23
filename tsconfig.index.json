@@ -1,0 +1,9 @@
+{
+  // The same strict check as tsconfig.json, plus noUncheckedIndexedAccess (a lookup such as arr[i] or table[key] may be
+  // undefined), for the files listed here only. tsc can't turn a flag on per file, and a file's imports are checked
+  // with it too, so only files whose imports are all clean can join. To grow it: add a file, run
+  // `npm run typecheck`, and fix what it finds by restructuring (a real check, for...of), not with ! or a cast.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noUncheckedIndexedAccess": true },
+  "include": ["js/keys.js", "js/rng.js", "js/config.js", "js/font.js", "js/highscores.js"]
+}
