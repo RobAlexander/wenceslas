@@ -25,7 +25,7 @@ import { context2d, makeCanvas } from './canvas.js';
 /**
  * @typedef {object} Game
  * @property {GameState} state
- * @property {import('./screens.js').Screen<any> | null} screen  the active screen; null while playing
+ * @property {import('./screens.js').Screen<never> | null} screen  the active screen; null while playing (never: it is only updated and drawn through this, not entered)
  * @property {number} night
  * @property {boolean} hard
  * @property {number} score        banked at the end of each night
@@ -145,7 +145,7 @@ const game = {
   input,
   audio,
 };
-/** @type {any} */ (window).__wenceslas = game; // handy for debugging and automated tests
+/** @type {Window & { __wenceslas?: Game }} */ (window).__wenceslas = game; // handy for debugging and automated tests
 
 for (const type of ['pointerdown', 'keydown', 'touchend']) addEventListener(type, () => audio.unlock(), { passive: true });
 
@@ -175,8 +175,11 @@ function enterState(name) {
  */
 function setState(name, data) {
   enterState(name);
-  game.screen = screens[name];
-  game.screen.enter(data);
+  const screen = screens[name];
+  // `data` is optional so that screens with no data can be shown with just a name. A screen that needs data is
+  // always given it by its callers, which the optional parameter can't express for a generic K, hence this cast.
+  screen.enter(/** @type {ScreenData[K]} */ (data));
+  game.screen = screen;
 }
 
 // Back to the game itself (no screen).
@@ -221,6 +224,7 @@ const actions = {
   },
 };
 
+/** @type {{ [K in ScreenName]: import('./screens.js').Screen<ScreenData[K]> }} */
 const screens = createScreens({
   input, events: game.events, spr, scores, snow, backdrop, go: setState, actions,
 });
@@ -239,7 +243,7 @@ const inPlay = () => {
   game.cheated = true;
   return game.world;
 };
-/** @type {Record<string, (w: World) => void>} */
+/** @type {Record<string, ((w: World) => void) | undefined>} */
 const SPAWN = {
   robber: (w) => w.spawnRobber(), wolf: (w) => w.spawnWolf(), archer: (w) => w.spawnArcher(), mary: (w) => { if (!w.boss) w.spawnMary(); }, frosty: (w) => { if (!w.boss) w.spawnFrosty(); },
   boleslaus: (w) => { if (!w.boss) w.spawnBoleslaus(); },
@@ -269,9 +273,10 @@ const devConsole = createConsole({
     spawn: {
       args: 'KIND (COUNT)', help: 'ADD ROBBER, WOLF, ARCHER, MARY, FROSTY, BOLESLAUS, NICHOLAS, PAGE OR FOOD',
       run: ([kind, count = '1']) => {
-        if (!SPAWN[kind]) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
+        const spawn = SPAWN[kind];
+        if (!spawn) throw new Error('KIND IS ONE OF ' + Object.keys(SPAWN).join(', '));
         const w = inPlay(), n = int(count, 1, 20, 'COUNT');
-        for (let i = 0; i < n; i++) SPAWN[kind](w);
+        for (let i = 0; i < n; i++) spawn(w);
         return 'ADDED ' + n + ' ' + kind.toUpperCase();
       },
     },
@@ -299,8 +304,9 @@ const devConsole = createConsole({
     screen: {
       args: 'NAME', help: 'SHOW A SCREEN, AS ?SCREEN= DOES', close: true,
       run: ([name]) => {
-        if (!demo[name]) throw new Error('NAME IS ONE OF ' + Object.keys(demo).join(', '));
-        demo[name]();
+        const show = demo[name];
+        if (!show) throw new Error('NAME IS ONE OF ' + Object.keys(demo).join(', '));
+        show();
       },
     },
     mouseaim: {
@@ -460,7 +466,7 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- start ----------
 
-/** @type {Record<string, () => void>} */
+/** @type {Record<string, (() => void) | undefined>} */
 const demo = {
   title: () => setState('title'),
   howto: () => setState('howto'),

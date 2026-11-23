@@ -90,7 +90,7 @@ export const STAGE_THRESHOLDS = [0, 0.2, 0.4, 0.6, 0.8];
  */
 /** @typedef {{ bpm: number, notes: [number, number, number, number][], voices: StingerVoice[] }} Stinger */
 
-/** @type {Record<string, Stinger>} */
+/** @type {Record<string, Stinger | undefined>} */
 export const STINGERS = {
   // Frosty arrives (frosty-arrive.mid): a low, uneasy figure. The bass plays it as written (A2 and
   // below), the strings an octave up so it is heard on small speakers, and a cold bell two octaves

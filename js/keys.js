@@ -31,9 +31,9 @@ export const ACTIONS = [
 ];
 
 // Which way each move or swing function points: [x, y], y down.
-/** @type {Record<string, [number, number]>} */
+/** @type {Record<string, [number, number] | undefined>} */
 export const MOVE_DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-/** @type {Record<string, [number, number]>} */
+/** @type {Record<string, [number, number] | undefined>} */
 export const ATTACK_DIRS = {
   atkN: [0, -1], atkS: [0, 1], atkW: [-1, 0], atkE: [1, 0],
   atkNW: [-1, -1], atkNE: [1, -1], atkSW: [-1, 1], atkSE: [1, 1],
@@ -41,7 +41,7 @@ export const ATTACK_DIRS = {
 
 // The arrow keys swing in the four directions; the numeric keypad swings in all eight (and 5 or 0 swings where
 // aimed). WASD moves.
-/** @type {Record<string, string[]>} */
+/** @type {Record<string, string[] | undefined>} */
 const DEFAULTS = {
   up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'],
   swing: ['Space', 'Numpad5', 'Numpad0'],
@@ -55,7 +55,7 @@ const pad = (keys) => Array.from({ length: MAX_KEYS }, (_, i) => keys[i] ?? '');
 
 /** @returns {Bindings} a fresh copy of the defaults */
 export function defaultBindings() {
-  return Object.fromEntries(ACTIONS.map(({ id }) => [id, pad(DEFAULTS[id])]));
+  return Object.fromEntries(ACTIONS.map(({ id }) => [id, pad(DEFAULTS[id] ?? [])]));
 }
 export const DEFAULT_BINDINGS = defaultBindings();
 
@@ -75,7 +75,7 @@ export function cleanBindings(raw) {
     return c;
   }));
   for (const { id } of ACTIONS) if (Array.isArray(src[id])) out[id] = take(src[id].slice(0, MAX_KEYS));
-  for (const { id } of ACTIONS) if (!out[id]) out[id] = take(DEFAULTS[id]);
+  for (const { id } of ACTIONS) if (!out[id]) out[id] = take(DEFAULTS[id] ?? []);
   return out;
 }
 
@@ -100,7 +100,7 @@ export function bindKey(bindings, id, slot, code) {
 }
 
 // The names of keys as drawn in the 3x5 font (see font.js): capitals, digits and a little punctuation.
-/** @type {Record<string, string>} */
+/** @type {Record<string, string | undefined>} */
 const NAMES = {
   Space: 'SPACE', Enter: 'ENTER', Tab: 'TAB', Backspace: 'BKSP', Delete: 'DEL', Insert: 'INS', Home: 'HOME', End: 'END',
   PageUp: 'PGUP', PageDown: 'PGDN', CapsLock: 'CAPS', ContextMenu: 'MENU',
@@ -115,7 +115,8 @@ const NAMES = {
 /** @param {string} code @returns {string} */
 export function keyName(code) {
   if (!code) return '---';
-  if (NAMES[code]) return NAMES[code];
+  const named = NAMES[code];
+  if (named) return named;
   let m = /^Key([A-Z])$/.exec(code) || /^Digit(\d)$/.exec(code) || /^F(\d\d?)$/.exec(code);
   if (m) return code.startsWith('F') ? code : m[1];
   m = /^Numpad(\d)$/.exec(code);

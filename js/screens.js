@@ -533,7 +533,7 @@ const RULES = [
   '4. GUARD YOUR PAGES WITH YOUR SWORD. FINISH QUICKLY FOR A TIME BONUS.',
 ];
 
-/** @type {Record<string, string>} keyed by input.st.lastDevice (the mouse and keyboard text is made from the key bindings) */
+/** @type {Record<string, string | undefined>} keyed by input.st.lastDevice (the mouse and keyboard text is made from the key bindings) */
 const CONTROLS = {
   touch: 'LEFT THUMB MOVES. RIGHT THUMB AIMS, LIFT IT TO SWING. TAP TO SWING AT THE NEAREST ENEMY.',
   pad: 'LEFT STICK MOVES, RIGHT STICK AIMS, RT, RB OR A SWINGS. START PAUSES.',

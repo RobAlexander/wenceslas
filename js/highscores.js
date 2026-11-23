@@ -29,9 +29,10 @@ export function cleanName(v) {
   return kept.trim().slice(0, MAX_NAME).trim();
 }
 
-/** @param {any} e  anything, possibly corrupt, read back from storage @returns {ScoreEntry | null} */
-function cleanEntry(e) {
-  if (!e || typeof e !== 'object') return null;
+/** @param {unknown} raw  anything, possibly corrupt, read back from storage @returns {ScoreEntry | null} */
+function cleanEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const e = /** @type {Record<string, unknown>} */ (raw);
   const name = cleanName(e.name ?? e.initials);
   const score = Number(e.score);
   if (!name || !Number.isFinite(score) || score < 0) return null;
