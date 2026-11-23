@@ -19,7 +19,14 @@ Optional URL parameters for testing, ignored in normal play:
 
 ### PC
 
-WASD to move, mouse to aim, left-click to swing. Esc or P to pause. F toggles fullscreen, M mutes (and remembers it).
+WASD to move, mouse to aim, left-click to swing. The arrow keys swing the sword up, down, left and right, and the numeric
+keypad swings it in all eight directions (7 8 9 / 4 6 / 1 2 3; 5 or 0 swings where you are already aiming, as Space does).
+Hold a swing key to keep swinging; two together, such as up and right, point diagonally. Esc or P to pause. F toggles
+fullscreen, M mutes (and remembers it).
+**Options, then Keys** lets you change every one of these keys, with up to three keys for each function (Enter or a click
+on a slot, then press the new key; Backspace clears a slot; a key can only do one thing, so giving it a new job takes it
+from the old one). Esc and the backquote key can't be used, and the menus always use the arrow keys, W/S, Enter, Space and
+Esc. The bindings are saved in the browser (`js/keys.js` has the functions and their defaults).
 The game scales to fill the window, keeping 16:9 (with bars if needed).
 In menus: W/S or the arrow keys to move, Enter or Space to choose, or just use the mouse.
 Name entry (up to 8 characters: letters, digits, space, - and .): type, or use the arrow keys (or click the arrows on screen); Enter to confirm. The last name used is offered again, and typing replaces it.
@@ -104,6 +111,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
   Every file in `js/` must pass, including new ones.
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
+- `tests/keys.mjs`: the key bindings (defaults, cleaning saved data, rebinding) and how input turns keys into movement, swings and aim.
 - `tests/archers.mjs`: archer behaviour (range, the draw telegraph, spread and hit rate, what stops arrows, backing away, being run down).
 - `tests/frosty.mjs`: boss nights and Frosty (which nights, the telegraph and its lock, rolling, resting, only hurtable while dizzy, ten hits to kill, scaling).
 - `tests/nicholas.mjs`: St Nicholas (the rotation, hittable except appearing and dying, drifting at a distance, the cast alternation and limits, skeletons rising and hunting, ghosts warning, locking and launching, the ice zones' patterns, timings and two strikes, the lightning timer and ring and cooldown, the ascension, no points for the dead).

@@ -3,7 +3,10 @@
 // (private windows) or hold corrupt data, and the game must still work.
 // An in-memory copy keeps the table working for the rest of the session.
 
+import { cleanBindings } from './keys.js';
+
 const SCORES_KEY = 'wenceslas.highscores.v1';
+const KEYS_KEY = 'wenceslas.keys.v1';
 const HARD_KEY = 'wenceslas.hardUnlocked';
 const AIM_KEY = 'wenceslas.mouseAim';
 const NAME_KEY = 'wenceslas.initials';   // the key predates longer names; it still holds the last name used
@@ -59,6 +62,8 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
   let memName = null;
   /** @type {MouseAim | null} */
   let memAim = null;
+  /** @type {import('./keys.js').Bindings | null} */
+  let memKeys = null;
 
   function load() {
     const raw = read(SCORES_KEY);
@@ -106,6 +111,15 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
     mouseAim() { return (memAim ?? read(AIM_KEY)) === 'pointer' ? 'pointer' : 'move'; },
     /** @param {MouseAim} v */
     setMouseAim(v) { memAim = v === 'pointer' ? 'pointer' : 'move'; write(AIM_KEY, memAim); },
+    // The keyboard bindings (see keys.js): what was saved, cleaned up, or the defaults.
+    keyBindings() {
+      if (memKeys) return cleanBindings(memKeys);
+      let raw = null;
+      try { raw = JSON.parse(read(KEYS_KEY) ?? 'null'); } catch { /* corrupt: use the defaults */ }
+      return cleanBindings(raw);
+    },
+    /** @param {import('./keys.js').Bindings} b */
+    setKeyBindings(b) { memKeys = cleanBindings(b); write(KEYS_KEY, JSON.stringify(memKeys)); },
     // The name used last, to offer again; AAA before there is one.
     lastName() {
       const v = read(NAME_KEY) || memName;

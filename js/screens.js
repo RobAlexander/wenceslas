@@ -16,6 +16,7 @@ import { drawText, textWidth } from './font.js';
 import { drawSnow } from './render.js';
 import { makeCanvas } from './canvas.js';
 import { MAX_NAME, NAME_CHARS, cleanName } from './highscores.js';
+import { ACTIONS, MAX_KEYS, defaultBindings, bindKey, keyName } from './keys.js';
 
 /** @typedef {{ x: number, y: number }} Point */
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect */
@@ -76,6 +77,7 @@ import { MAX_NAME, NAME_CHARS, cleanName } from './highscores.js';
  * @property {() => void} nextNight
  * @property {(run: RunResult) => void} finishRun   after game over or the ending
  * @property {(mode: 'move' | 'pointer') => void} setMouseAim   saved between sessions
+ * @property {(bindings: import('./keys.js').Bindings) => void} setKeyBindings   saved between sessions
  */
 
 /**
@@ -274,16 +276,152 @@ class Menu {
   }
 }
 
+// ---------- key bindings ----------
+
+const KEY_ROW_Y = 32, KEY_ROW_H = 13;          // the first row, and the spacing
+const KEY_LABEL_X = 130;
+const KEY_SLOT_X = [290, 366, 442], KEY_SLOT_W = 70;   // each key slot's left edge, and its width
+
+// The key bindings editor: one row per function with MAX_KEYS slots, then RESET and BACK. It covers the whole
+// screen, and is shown by the options list (so it is part of the same screen as that, like the options themselves).
+/** @param {ScreenEnv} env */
+function keysPanel(env) {
+  let bindings = env.scores.keyBindings();
+  const RESET = ACTIONS.length, BACK = RESET + 1, rows = BACK + 1;
+  let row = 0, slot = 0, t = 0;
+  let listening = false;
+  let note = '';
+  /** @type {Point | null} */
+  let lastMouse = null;
+
+  /** @param {number} r */
+  const rowY = (r) => KEY_ROW_Y + r * KEY_ROW_H;
+  /** @param {number} r @param {number} s @returns {Rect} */
+  const slotRect = (r, s) => ({ x: KEY_SLOT_X[s] - 3, y: rowY(r) - 3, w: KEY_SLOT_W, h: 11 });
+  /** @param {number} r @returns {Rect} */
+  const rowRect = (r) => ({ x: KEY_LABEL_X - 6, y: rowY(r) - 3, w: 340, h: 11 });
+  /** @param {import('./keys.js').Bindings} b */
+  const save = (b) => { bindings = b; env.actions.setKeyBindings(b); };
+
+  const panel = {
+    active: false,
+    open() {
+      this.active = true;
+      bindings = env.scores.keyBindings();
+      row = 0; slot = 0; t = 0; listening = false; note = '';
+      lastMouse = null;
+    },
+    /** @param {string} code */
+    press(code) {
+      const { events } = env;
+      if (listening) {
+        if (code === 'Escape') { listening = false; note = ''; events.push('menuSelect'); return; }
+        const id = ACTIONS[row].id;
+        const done = bindKey(bindings, id, slot, code);
+        if (!done) { note = keyName(code) + ' CANNOT BE USED'; return; }   // still listening
+        save(done.bindings);
+        listening = false;
+        note = done.lost ? keyName(code) + ' WAS ' + done.lost + ': NOW ' + ACTIONS[row].label : keyName(code) + ' SET';
+        events.push('menuSelect');
+        return;
+      }
+      if (code === 'Escape') { events.push('menuSelect'); this.active = false; return; }
+      const move = (/** @type {number} */ d) => { row = (row + d + rows) % rows; events.push('menuMove'); };
+      const slide = (/** @type {number} */ d) => { if (row < RESET) { slot = (slot + d + MAX_KEYS) % MAX_KEYS; events.push('menuMove'); } };
+      if (code === 'ArrowUp' || code === 'KeyW') move(-1);
+      else if (code === 'ArrowDown' || code === 'KeyS') move(1);
+      else if (code === 'ArrowLeft' || code === 'KeyA') slide(-1);
+      else if (code === 'ArrowRight' || code === 'KeyD') slide(1);
+      else if ((code === 'Backspace' || code === 'Delete') && row < RESET) {
+        const done = bindKey(bindings, ACTIONS[row].id, slot, '');
+        if (done) { save(done.bindings); note = 'CLEARED'; events.push('menuSelect'); }
+      } else if (code === 'Enter' || code === 'Space') this.choose();
+    },
+    // Act on the highlighted row: start listening for a key, reset, or go back.
+    choose() {
+      env.events.push('menuSelect');
+      if (row < RESET) { listening = true; note = ''; }
+      else if (row === RESET) { save(defaultBindings()); note = 'BACK TO THE USUAL KEYS'; }
+      else this.active = false;
+    },
+    // keys: the key codes taken this frame.
+    /** @param {string[]} keys */
+    update(keys) {
+      for (const k of keys) { if (!this.active) break; this.press(k); }
+      if (!this.active) return;
+      const { input } = env;
+      const m = input.st.mouse;
+      if (!listening && input.st.mouseSeen && (!lastMouse || m.x !== lastMouse.x || m.y !== lastMouse.y)) {
+        lastMouse = { x: m.x, y: m.y };
+        for (let r = 0; r < rows; r++) {
+          if (!hit(rowRect(r), m)) continue;
+          if (r !== row) { row = r; env.events.push('menuMove'); }
+          if (r < RESET) for (let s = 0; s < MAX_KEYS; s++) if (hit(slotRect(r, s), m)) slot = s;
+        }
+      }
+      const click = input.takeClick();
+      if (click) {
+        if (listening) { listening = false; note = ''; return; }   // a click elsewhere gives up waiting
+        for (let r = 0; r < rows; r++) {
+          if (!hit(rowRect(r), click)) continue;
+          row = r;
+          if (r < RESET) {
+            const s = [0, 1, 2].find((i) => hit(slotRect(r, i), click));
+            if (s === undefined) continue;
+            slot = s;
+          }
+          this.choose();
+        }
+      }
+    },
+    /** @param {CanvasRenderingContext2D} ctx @param {number} dt */
+    draw(ctx, dt) {
+      t += dt;
+      ctx.fillStyle = 'rgba(26,28,44,0.97)';
+      ctx.fillRect(0, 0, W, H);
+      drawText(ctx, 'KEYS', W / 2, 6, PAL.y, { scale: 2, align: 'center' });
+      for (let s = 0; s < MAX_KEYS; s++) drawText(ctx, 'KEY ' + (s + 1), KEY_SLOT_X[s], 21, PAL.N, { shadow: false });
+      for (let r = 0; r < rows; r++) {
+        const y = rowY(r), on = r === row;
+        const label = r < RESET ? ACTIONS[r].label : r === RESET ? 'RESET TO USUAL KEYS' : 'BACK';
+        drawText(ctx, label, KEY_LABEL_X, y, on ? PAL.y : PAL.w, { shadow: false });
+        if (on && r >= RESET) tri(ctx, KEY_LABEL_X - 10, y + 2, 'right', PAL.y);
+        if (r >= RESET) continue;
+        for (let s = 0; s < MAX_KEYS; s++) {
+          const here = on && s === slot, waiting = here && listening;
+          if (here) {
+            const rc = slotRect(r, s);
+            ctx.fillStyle = waiting ? 'rgba(255,205,117,0.30)' : 'rgba(244,244,244,0.16)';
+            ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
+          }
+          const code = bindings[ACTIONS[r].id][s];
+          if (waiting) { if (blink(t, 3)) drawText(ctx, 'PRESS A KEY', KEY_SLOT_X[s], y, PAL.y, { shadow: false }); }
+          else drawText(ctx, keyName(code), KEY_SLOT_X[s], y, code ? (here ? PAL.y : PAL.w) : PAL.N, { shadow: false });
+        }
+      }
+      const y0 = rowY(rows - 1) + 20;
+      caption(ctx, say(env,
+        listening ? 'PRESS THE KEY YOU WANT    ESC TO CANCEL' : 'ENTER TO CHANGE A KEY    BACKSPACE TO CLEAR    ESC TO GO BACK',
+        'THESE ARE KEYBOARD KEYS    TAP BACK TO RETURN'), y0, PAL.n);
+      if (note) caption(ctx, note, y0 + 14, PAL.y);
+    },
+  };
+  return panel;
+}
+
 // ---------- options ----------
 
 // The options list, shown by the title and pause screens in place of their own menu.
 // (It is part of those screens rather than a screen of its own, so the game state and music don't change.)
 /** @param {ScreenEnv} env */
 function optionsPanel(env) {
-  const labels = () => ['MOUSE AIM: ' + (env.scores.mouseAim() === 'move' ? 'MOVE' : 'CURSOR'), 'BACK'];
+  const labels = () => ['MOUSE AIM: ' + (env.scores.mouseAim() === 'move' ? 'MOVE' : 'CURSOR'), 'KEYS', 'BACK'];
   const menu = new Menu(env, labels(), { y: 150 });
+  const keysList = keysPanel(env);
   return {
     active: false,
+    // true while the keys editor is open: it covers the whole screen, so the screens leave their own things out
+    get full() { return keysList.active; },
     /** @param {number} y  where the list starts */
     open(y) {
       this.active = true;
@@ -294,19 +432,22 @@ function optionsPanel(env) {
     // keys: the key codes taken this frame.
     /** @param {string[]} keys */
     update(keys) {
+      if (keysList.active) { keysList.update(keys); return; }
       if (keys.includes('Escape')) { env.events.push('menuSelect'); this.active = false; return; }
       const c = menu.update(keys);
       if (c === 0) {
         env.actions.setMouseAim(env.scores.mouseAim() === 'move' ? 'pointer' : 'move');
         menu.labels = labels();
-      } else if (c === 1) this.active = false;
+      } else if (c === 1) keysList.open();
+      else if (c === 2) this.active = false;
     },
     /** @param {CanvasRenderingContext2D} ctx @param {number} t */
     draw(ctx, t) {
+      if (keysList.active) { keysList.draw(ctx, 1 / 60); return; }
       menu.draw(ctx, t);
       const move = env.scores.mouseAim() === 'move';
-      caption(ctx, move ? 'MOVE THE MOUSE TO POINT THE SWORD' : 'THE SWORD POINTS AT THE CURSOR', menu.y + 46, PAL.n);
-      caption(ctx, 'MOVE MODE WORKS MORE RELIABLY IN FULLSCREEN (PRESS F)', menu.y + 60, PAL.y);
+      caption(ctx, move ? 'MOVE THE MOUSE TO POINT THE SWORD' : 'THE SWORD POINTS AT THE CURSOR', menu.y + 56, PAL.n);
+      caption(ctx, 'MOVE MODE WORKS MORE RELIABLY IN FULLSCREEN (PRESS F)', menu.y + 70, PAL.y);
     },
   };
 }
@@ -346,6 +487,7 @@ function titleScreen(env) {
   /** @param {CanvasRenderingContext2D} ctx */
   function draw(ctx) {
     ctx.drawImage(env.backdrop, 0, 0);
+    if (options.full) { options.draw(ctx, t); return; }   // the keys editor takes the whole screen
     drawSnow(ctx, env.snow, false);
     for (const [x, y, v] of TITLE_TREES) {
       const tr = env.spr.trees[v];
@@ -391,12 +533,27 @@ const RULES = [
   '4. GUARD YOUR PAGES WITH YOUR SWORD. FINISH QUICKLY FOR A TIME BONUS.',
 ];
 
-/** @type {Record<string, string>} keyed by input.st.lastDevice */
+/** @type {Record<string, string>} keyed by input.st.lastDevice (the mouse and keyboard text is made from the key bindings) */
 const CONTROLS = {
-  mouse: 'WASD TO MOVE, MOUSE TO AIM, CLICK TO SWING. ESC PAUSES, M MUTES, F GOES FULLSCREEN.',
   touch: 'LEFT THUMB MOVES. RIGHT THUMB AIMS, LIFT IT TO SWING. TAP TO SWING AT THE NEAREST ENEMY.',
   pad: 'LEFT STICK MOVES, RIGHT STICK AIMS, RT, RB OR A SWINGS. START PAUSES.',
 };
+
+// The lines of controls text for the how to play screen, from the device in use and (for the keyboard) the bindings.
+/** @param {ScreenEnv} env @returns {string[]} */
+function controlLines(env) {
+  const device = env.input.st.lastDevice;
+  if (device !== 'mouse') return [CONTROLS[device] || ''];
+  const b = env.scores.keyBindings();
+  /** @param {string[]} ids @param {string} [sep] */
+  const first = (ids, sep = ' ') => ids.map((id) => { const c = b[id].find(Boolean); return c ? keyName(c) : '?'; }).join(sep);
+  const diagonals = ['atkNW', 'atkNE', 'atkSW', 'atkSE'].some((id) => b[id].some(Boolean));
+  return [
+    first(['up', 'left', 'down', 'right']) + ' TO MOVE, MOUSE TO AIM, CLICK TO SWING.',
+    first(['atkN', 'atkS', 'atkW', 'atkE'], '/') + ' SWING THE SWORD THAT WAY' + (diagonals ? ', AND SO DO THE DIAGONAL KEYS.' : '.'),
+    'ESC OR ' + first(['pause']) + ' PAUSES, ' + first(['mute']) + ' MUTES, ' + first(['fullscreen']) + ' GOES FULLSCREEN. KEYS CAN BE CHANGED IN OPTIONS.',
+  ];
+}
 
 // The sprite key: [sprites, name, colour, description]. Drawn in two columns.
 /** @param {Sprites} spr @returns {Array<[HTMLCanvasElement[], string, string, string]>} */
@@ -453,7 +610,8 @@ function howToScreen(env) {
       wrap(text, 54).forEach((ln, j) => drawText(ctx, ln, x + 52, y + 14 + j * 9, PAL.w));
     });
 
-    caption(ctx, CONTROLS[env.input.st.lastDevice] || '', 312, PAL.y);
+    const lines = controlLines(env);
+    lines.forEach((ln, i) => caption(ctx, ln, 312 - (lines.length - 1 - i) * 12, PAL.y));
     if (blink(t, 2)) caption(ctx, say(env, 'PRESS ENTER OR CLICK TO RETURN', 'TAP TO RETURN'), 336, PAL.n);
   }
 
@@ -480,7 +638,7 @@ function pauseScreen(env) {
     t += dt;
     const keys = env.input.takeKeys();
     if (options.active) { options.update(keys); return; }
-    if (keys.includes('Escape') || keys.includes('KeyP')) { env.events.push('menuSelect'); env.actions.resume(); return; }
+    if (keys.includes('Escape') || keys.some((k) => env.scores.keyBindings().pause.includes(k))) { env.events.push('menuSelect'); env.actions.resume(); return; }
     const c = menu.update(keys);
     if (c === 0) env.actions.resume();
     else if (c === 1) options.open(130);
@@ -489,6 +647,7 @@ function pauseScreen(env) {
 
   /** @param {CanvasRenderingContext2D} ctx */
   function draw(ctx) {
+    if (options.full) { options.draw(ctx, t); return; }   // the keys editor takes the whole screen
     dim(ctx);
     box(ctx, W / 2 - 150, 86, 300, 140);
     drawText(ctx, options.active ? 'OPTIONS' : 'PAUSED', W / 2, 100, PAL.y, { scale: 3, align: 'center' });

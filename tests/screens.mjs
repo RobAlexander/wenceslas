@@ -11,6 +11,7 @@ const { makeRng } = await import('../js/rng.js');
 const { makeGround, makeSnow, drawWorld, drawHud } = await import('../js/render.js');
 const { createScreens } = await import('../js/screens.js');
 const { makeStore } = await import('../js/highscores.js');
+const { defaultBindings } = await import('../js/keys.js');
 
 const out = process.argv[2] || 'screens-out';
 mkdirSync(out, { recursive: true });
@@ -35,7 +36,7 @@ const env = {
   go: (name, data) => { log.push('go:' + name); current = screens[name]; current.enter(data); },
   actions: {
     newGame: (h) => log.push('newGame:' + h), resume: () => log.push('resume'), quitToTitle: () => log.push('quit'),
-    nextNight: () => log.push('nextNight'), setMouseAim: (m) => { log.push('aim:' + m); store.setMouseAim(m); }, finishRun: (r) => log.push('finishRun:' + r.score),
+    nextNight: () => log.push('nextNight'), setMouseAim: (m) => { log.push('aim:' + m); store.setMouseAim(m); }, setKeyBindings: (b) => store.setKeyBindings(b), finishRun: (r) => log.push('finishRun:' + r.score),
   },
 };
 const screens = createScreens(env);
@@ -73,10 +74,40 @@ assert.equal(store.mouseAim(), 'move');
 press('Enter'); assert.deepEqual(log.splice(0), ['aim:pointer']); assert.equal(store.mouseAim(), 'pointer');
 run(0.3); snap('title-options-cursor');
 press('Enter'); assert.deepEqual(log.splice(0), ['aim:move']);
-press('ArrowDown', 'Enter');                       // BACK
+press('ArrowDown', 'ArrowDown', 'Enter');          // BACK (after KEYS)
 press('Enter'); assert.deepEqual(log.splice(0), [], 'back on the menu: the highlight is still on OPTIONS');
 press('Escape');                                   // Escape closes the options
 press('ArrowUp', 'Enter'); assert.deepEqual(log.splice(0), ['newGame:false']);   // the menu is live again
+// key bindings editor: OPTIONS, then KEYS (the second item)
+current = screens.title; current.enter(); press('ArrowDown', 'Enter'); press('ArrowDown', 'Enter');
+run(0.3); snap('keys');
+assert.deepEqual(log, [], 'nothing happens outside the panel');
+press('ArrowRight', 'Enter'); run(0.1); snap('keys-listening');             // MOVE UP, second key: waiting for a key
+press('KeyI'); assert.deepEqual(store.keyBindings().up, ['KeyW', 'KeyI', '']);
+press('Enter', 'Escape'); assert.deepEqual(store.keyBindings().up, ['KeyW', 'KeyI', ''], 'Escape stops waiting and changes nothing');
+press('Enter', 'Backquote'); assert.deepEqual(store.keyBindings().up, ['KeyW', 'KeyI', ''], 'the dev console key is refused, and it keeps waiting');
+press('KeyU'); assert.deepEqual(store.keyBindings().up, ['KeyW', 'KeyU', ''], 'and then a good key is taken');
+press('ArrowLeft', 'Enter', 'ArrowUp');                                        // the first slot takes the up arrow...
+assert.deepEqual(store.keyBindings().up, ['ArrowUp', 'KeyU', '']);
+assert.deepEqual(store.keyBindings().atkN, ['', 'Numpad8', ''], '...from the function that had it');
+run(0.1); snap('keys-changed');
+press('Backspace'); assert.deepEqual(store.keyBindings().up, ['', 'KeyU', ''], 'Backspace clears the slot');
+press('ArrowUp', 'ArrowUp', 'Enter');                                          // up from the first row wraps to BACK; then RESET
+assert.deepEqual(store.keyBindings(), defaultBindings(), 'reset puts the usual keys back');
+assert.deepEqual(log, []);
+press('Escape');                                                               // leaves the editor, not the options
+press('Enter'); run(0.1);                                                      // the highlight is on KEYS: back in the editor
+press('ArrowUp', 'Enter');                                                     // BACK, the last row of the editor
+press('ArrowDown', 'Enter');                                                   // BACK in the options
+press('ArrowUp', 'Enter'); assert.deepEqual(log.splice(0), ['newGame:false'], 'back on the title menu');
+// the editor by mouse: click a slot, then press a key
+current = screens.title; current.enter(); press('ArrowDown', 'Enter'); press('ArrowDown', 'Enter'); run(0.1);
+queue.click = { x: 300, y: 32 + 3 * 13 + 3 }; current.update(1 / 60); run(0.1);   // MOVE RIGHT, first key
+press('KeyK'); assert.deepEqual(store.keyBindings().right, ['KeyK', '', '']);
+store.setKeyBindings(defaultBindings());
+press('Escape'); press('Escape');
+assert.deepEqual(log.splice(0), [], 'Escape closes the editor, then the options');
+press('ArrowUp', 'Enter'); assert.deepEqual(log.splice(0), ['newGame:false']);
 current = screens.title; current.enter(); press('ArrowDown', 'Enter'); press('Escape'); press('ArrowUp', 'Enter');
 assert.deepEqual(log.splice(0), ['newGame:false']);
 current = screens.title; current.enter();

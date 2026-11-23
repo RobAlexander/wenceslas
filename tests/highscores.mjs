@@ -133,3 +133,21 @@ console.log('highscores: all tests passed');
   b.setMouseAim('pointer');
   assert.equal(b.mouseAim(), 'pointer');
 }
+
+// key bindings: the defaults until changed; saved, cleaned on the way back, and kept in memory if storage is blocked
+{
+  const { defaultBindings, bindKey } = await import('../js/keys.js');
+  const st = fakeStorage();
+  const a = makeStore(() => st);
+  assert.deepEqual(a.keyBindings(), defaultBindings());
+  const changed = bindKey(defaultBindings(), 'up', 1, 'KeyI').bindings;
+  a.setKeyBindings(changed);
+  assert.deepEqual(makeStore(() => st).keyBindings(), changed, 'a fresh store reads them back');
+  assert.deepEqual(makeStore(() => fakeStorage({ 'wenceslas.keys.v1': '{not json' })).keyBindings(), defaultBindings(), 'corrupt data: the defaults');
+  assert.deepEqual(makeStore(() => fakeStorage({ 'wenceslas.keys.v1': '{"up":["Escape","KeyQ"]}' })).keyBindings().up, ['', 'KeyQ', ''], 'bad keys are dropped');
+  const boom = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
+  const b = makeStore(() => boom);
+  assert.deepEqual(b.keyBindings(), defaultBindings());
+  b.setKeyBindings(changed);
+  assert.deepEqual(b.keyBindings(), changed);
+}

@@ -90,8 +90,9 @@ const portraitTouch = () => innerHeight > innerWidth && !!globalThis.matchMedia?
 
 addEventListener('keydown', (e) => {
   const plain = !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && game.state !== 'nameEntry' && !input.st.blocked;
-  if (e.code === 'KeyF' && plain) toggleFullscreen();
-  if (e.code === 'KeyM' && plain) audio.toggleMute();
+  const acts = input.actionsFor(e.code);
+  if (acts.includes('fullscreen') && plain) toggleFullscreen();
+  if (acts.includes('mute') && plain) audio.toggleMute();
 });
 
 // Test hooks, all optional and ignored in normal play:
@@ -151,6 +152,7 @@ for (const type of ['pointerdown', 'keydown', 'touchend']) addEventListener(type
 const touch = createTouch(input, canvas, { isPlaying: () => game.state === 'play', onFirstTap: enterFullscreen });
 const pad = createGamepad(input);
 input.setMouseAim(scores.mouseAim());
+input.setBindings(scores.keyBindings());
 
 // ---------- flow ----------
 
@@ -201,6 +203,8 @@ const actions = {
   resume() { enterPlay(); },
   /** @param {'move' | 'pointer'} mode */
   setMouseAim(mode) { scores.setMouseAim(mode); input.setMouseAim(mode); },
+  /** @param {import('./keys.js').Bindings} b */
+  setKeyBindings(b) { scores.setKeyBindings(b); input.setBindings(scores.keyBindings()); },
   quitToTitle() { setState('title'); },
   nextNight() {
     if (game.night >= NIGHTS) { setState('ending', { score: game.score, night: game.night, hard: game.hard }); return; }

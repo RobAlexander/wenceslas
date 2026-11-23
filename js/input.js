@@ -6,17 +6,12 @@
 // clicks and gamepad buttons become key presses, so every screen works with all three.
 
 import { W, H, CFG } from './config.js';
+import { DEFAULT_BINDINGS, MOVE_DIRS, ATTACK_DIRS } from './keys.js';
 
 /** @typedef {import('./world.js').GameInput} GameInput */
 /** @typedef {{ x: number, y: number }} Point */
 /** @typedef {'mouse' | 'touch' | 'pad'} Device */
 /** @typedef {'touch' | 'pad'} StickSource  devices that push stick and aim values in */
-
-/** @type {Record<string, [number, number]>} */
-const MOVE_KEYS = {
-  KeyW: [0, -1], KeyA: [-1, 0], KeyS: [0, 1], KeyD: [1, 0],
-  ArrowUp: [0, -1], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowRight: [1, 0],
-};
 
 // Keys that keep firing while held down, when read through takeKeys().
 const REPEATABLE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
@@ -76,17 +71,45 @@ export function createInput(canvas) {
   const src = { touch: { mx: 0, my: 0, aim: null }, pad: { mx: 0, my: 0, aim: null } };
   let now = 0;
 
+  // Which functions each key code does (see keys.js), rebuilt whenever the bindings change.
+  /** @type {Map<string, string[]>} */
+  let lookup = new Map();
+  /** @param {import('./keys.js').Bindings} b */
+  const setBindings = (b) => {
+    lookup = new Map();
+    for (const [id, codes] of Object.entries(b)) {
+      for (const code of codes) if (code) lookup.set(code, [...(lookup.get(code) ?? []), id]);
+    }
+  };
+  setBindings(DEFAULT_BINDINGS);
+  /** @param {string} code */
+  const actionsFor = (code) => lookup.get(code) ?? [];
+
+  // The way the held swing keys point, summed (so up and right together make up-right), or null if none is held.
+  /** @returns {number | null} radians */
+  const attackAngle = () => {
+    let x = 0, y = 0;
+    for (const code of keys) {
+      for (const id of actionsFor(code)) { const d = ATTACK_DIRS[id]; if (d) { x += d[0]; y += d[1]; } }
+    }
+    return x || y ? Math.atan2(y, x) : null;
+  };
+
   /** @param {string} code */
   const pushKey = (code) => { if (st.keyQueue.length < 32) st.keyQueue.push(code); };
 
   addEventListener('keydown', (e) => {
     if (st.blocked) return;
-    if (MOVE_KEYS[e.code] || e.code === 'Space' || e.code === 'Backspace') e.preventDefault();
+    const acts = actionsFor(e.code);
+    const chord = e.ctrlKey || e.metaKey || e.altKey;   // Ctrl+R and the like are the browser's
+    if (e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Backspace' || (acts.length && !chord)) e.preventDefault();
     keys.add(e.code);
     if (!e.repeat || REPEATABLE.has(e.code)) pushKey(e.code);
     if (e.repeat) return;
-    if (e.code === 'Escape' || e.code === 'KeyP') st.pause = true;
+    if (e.code === 'Escape' || acts.includes('pause')) st.pause = true;
     if (e.code === 'Enter' || e.code === 'Space') st.confirm = true;
+    // Swing keys swing like a click: buffered, so a press just before the cooldown ends still counts.
+    if (acts.includes('swing') || acts.some((id) => id in ATTACK_DIRS)) { st.swingAt = now; st.autoAim = false; }
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
   addEventListener('blur', () => keys.clear());
@@ -140,15 +163,17 @@ export function createInput(canvas) {
     /** @param {number} cooldownLeft  the king's swing cooldown @returns {GameInput} */
     gameplay(cooldownLeft) {
       let mx = 0, my = 0;
-      for (const [code, v] of Object.entries(MOVE_KEYS)) {
-        if (keys.has(code)) { mx += v[0]; my += v[1]; }
+      for (const code of keys) {
+        for (const id of actionsFor(code)) { const v = MOVE_DIRS[id]; if (v) { mx += v[0]; my += v[1]; } }
       }
+      const aimKeys = attackAngle();
       mx += src.touch.mx + src.pad.mx;
       my += src.touch.my + src.pad.my;
       // A press counts if it arrives during the last moments of the cooldown.
       const buffered = now - st.swingAt <= CFG.swingBuffer + Math.max(0, cooldownLeft);
-      const swing = buffered && cooldownLeft <= 0;
-      const autoAim = swing && st.autoAim;
+      // A swing key held down keeps swinging, each time the cooldown ends.
+      const swing = (buffered || aimKeys !== null) && cooldownLeft <= 0;
+      const autoAim = swing && st.autoAim && aimKeys === null;
       if (swing) { st.swingAt = -Infinity; st.autoAim = false; }
 
       /** @type {GameInput} */
@@ -165,6 +190,13 @@ export function createInput(canvas) {
         if (a != null) snap.aimAngle = a;
         else if (Math.hypot(mx, my) > 0.2) snap.aimAngle = Math.atan2(my, mx);
       }
+      // Swing keys point the sword the way they point, whatever else is aiming. The mouse takes over again when it
+      // moves (in 'move' mode the direction stays until then; in 'pointer' mode the cursor is followed again).
+      if (aimKeys !== null) {
+        delete snap.ax; delete snap.ay;
+        snap.aimAngle = aimKeys;
+        if (st.mouseAim === 'move') { st.mouseAngle = aimKeys; aimVec.x = 0; aimVec.y = 0; }
+      }
       return snap;
     },
 
@@ -177,6 +209,10 @@ export function createInput(canvas) {
       st.pause = false; st.confirm = false; st.swingAt = -Infinity; st.autoAim = false;
       st.keyQueue = []; st.click = null;
     },
+
+    // The key bindings (see keys.js), and the functions a key code does.
+    setBindings,
+    actionsFor,
 
     /** @param {MouseAim} mode */
     setMouseAim(mode) { st.mouseAim = mode; st.mouseAngle = null; aimVec.x = 0; aimVec.y = 0; },
