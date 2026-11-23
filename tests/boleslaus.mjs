@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { World } from '../js/world.js';
 import { makeRng } from '../js/rng.js';
+import { pageHolding } from './helpers.mjs';
 import { nightParams, bossInfo, boleslausStats, CFG, NIGHTS } from '../js/config.js';
 
 const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
@@ -45,7 +46,7 @@ assert.ok(boleslausStats(2).hp > boleslausStats(1).hp, 'a later time would be a 
   const { w, events } = quietWorld(9);
   w.king.god = true;
   w.delivered = w.p.foodTarget - 1;
-  w.line = [{ food: 'bread' }];
+  w.line = [pageHolding('bread')];
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.equal(w.boss?.kind, 'boleslaus', 'Boleslaus comes on night 9');
@@ -59,7 +60,7 @@ assert.ok(boleslausStats(2).hp > boleslausStats(1).hp, 'a later time would be a 
 }
 {
   const { w } = quietWorld(12);
-  w.king.god = true; w.delivered = w.p.foodTarget - 1; w.line = [{ food: 'bread' }];
+  w.king.god = true; w.delivered = w.p.foodTarget - 1; w.line = [pageHolding('bread')];
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.equal(w.boss?.kind, 'nicholas', 'and St Nicholas on night 12');
@@ -274,7 +275,7 @@ assert.ok(CFG.boleslausReach + 4 >= CFG.swingRange + CFG.boleslausRadius + 2, 'w
 
 // ---- a roll and a charge: hurt for 2 and 3, flatten pages, stop at their distance, in a tree or at the edge
 {
-  for (const [attack, dmg, distance] of [['roll', CFG.boleslausRollDamage, CFG.boleslausRollDistance], ['charge', CFG.boleslausChargeDamage, CFG.boleslausChargeDistance]]) {
+  for (const [attack, dmg, distance] of /** @type {[string, number, number][]} */ ([['roll', CFG.boleslausRollDamage, CFG.boleslausRollDistance], ['charge', CFG.boleslausChargeDamage, CFG.boleslausChargeDistance]])) {
     const { w } = quietWorld(9, 14);
     const b = princeAt(w, 60, 200);
     b.state = attack; b.attack = attack; b.dx = 1; b.dy = 0; b.rolled = 0;
@@ -422,7 +423,7 @@ assert.ok(CFG.boleslausReach + 4 >= CFG.swingRange + CFG.boleslausRadius + 2, 'w
     const hittable = b && w.foes().includes(b);
     const mx = hittable ? Math.sign(b.x - w.king.x) : Math.cos(i / 41), my = hittable ? Math.sign(b.y - w.king.y) : Math.sin(i / 29);
     w.update(1 / 60, { mx, my, ax: b?.x ?? 0, ay: (b?.y ?? 0) - 8, swing: true });
-    if (b) for (const v of [b.x, b.y, b.t, b.dx, b.dy, b.think]) assert.ok(Number.isFinite(v));
+    if (b?.kind === 'boleslaus') for (const v of [b.x, b.y, b.t, b.dx, b.dy, b.think]) assert.ok(Number.isFinite(v));
     for (const r of w.robbers) assert.ok(Number.isFinite(r.x) && Number.isFinite(r.y));
     if (w.done) break;
   }

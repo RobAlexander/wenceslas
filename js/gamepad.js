@@ -13,7 +13,7 @@ const BTN = { A: 0, B: 1, RB: 5, RT: 7, START: 9, UP: 12, DOWN: 13, LEFT: 14, RI
 /** @typedef {keyof typeof BTN} Button */
 const BUTTONS = /** @type {Button[]} */ (Object.keys(BTN));
 
-/** @typedef {ReturnType<typeof import('./input.js').createInput>} Input */
+/** @typedef {Pick<ReturnType<typeof import('./input.js').createInput>, 'setDevice' | 'setStick' | 'setAim' | 'pressSwing' | 'pushKey' | 'requestPause'>} Input  what the gamepad drives */
 /**
  * The parts of a browser Gamepad this module reads (tests pass simpler fakes).
  * @typedef {object} PadLike

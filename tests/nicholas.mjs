@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { World } from '../js/world.js';
 import { makeRng } from '../js/rng.js';
+import { pageHolding } from './helpers.mjs';
 import { nightParams, bossInfo, nicholasStats, CFG, NIGHTS } from '../js/config.js';
 
 const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
@@ -44,7 +45,7 @@ assert.equal(nicholasStats(1).hp, CFG.nicholasHp);
 {
   const { w, events } = quietWorld(12);
   w.king.god = true;
-  w.delivered = w.p.foodTarget - 1; w.line = [{ food: 'bread' }];
+  w.delivered = w.p.foodTarget - 1; w.line = [pageHolding('bread')];
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.equal(w.boss?.kind, 'nicholas', 'St Nicholas comes on night 12');
@@ -59,6 +60,7 @@ assert.equal(nicholasStats(1).hp, CFG.nicholasHp);
   w.king.god = true;
   w.robberTimer = w.wolfTimer = w.archerTimer = w.foodTimer = w.pageTimer = 0;
   w.spawnNicholas();
+  assert.ok(w.boss?.kind === 'nicholas');
   w.boss.think = 999;
   step(w, 5);
   assert.equal(w.robbers.length + w.wolves.length + w.archers.length + w.foods.length + w.pages.length, 0);
@@ -73,7 +75,7 @@ assert.equal(nicholasStats(1).hp, CFG.nicholasHp);
   assert.equal(w.foes().includes(b), false, 'not a target while he appears');
   step(w, CFG.nicholasAppear + 0.1);
   assert.equal(b.state, 'idle', 'then he is there');
-  for (const state of ['idle', 'castRaise', 'castIce', 'thunder']) {
+  for (const state of /** @type {const} */ (['idle', 'castRaise', 'castIce', 'thunder'])) {
     b.state = state;
     assert.equal(w.foes().includes(b), true, 'a target while ' + state);
   }
@@ -487,7 +489,7 @@ assert.equal(nicholasStats(1).hp, CFG.nicholasHp);
     const b = w.boss;
     const mx = b && b.state !== 'appear' ? Math.sign(b.x - w.king.x) : Math.cos(i / 41), my = b && b.state !== 'appear' ? Math.sign(b.y - w.king.y) : Math.sin(i / 29);
     w.update(1 / 60, { mx, my, ax: b?.x ?? 0, ay: (b?.y ?? 0) - 8, swing: true });
-    if (b) for (const v of [b.x, b.y, b.t, b.think, b.close]) assert.ok(Number.isFinite(v), 'finite: ' + v);
+    if (b?.kind === 'nicholas') for (const v of [b.x, b.y, b.t, b.think, b.close]) assert.ok(Number.isFinite(v), 'finite: ' + v);
     for (const r of w.robbers) assert.ok(Number.isFinite(r.x) && Number.isFinite(r.y));
     for (const g of w.ghosts) assert.ok(Number.isFinite(g.x) && Number.isFinite(g.y));
     assert.ok(w.skeletonCount() <= CFG.nicholasMaxSkeletons + CFG.nicholasSkeletons && w.ghosts.length <= CFG.nicholasMaxGhosts + CFG.nicholasGhosts, 'the dead stay within limits');

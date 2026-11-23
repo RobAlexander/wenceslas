@@ -51,7 +51,7 @@ whole(CURVES.foodOnGround.levelsPerExtra, 1, 'CURVES.foodOnGround.levelsPerExtra
 whole(CURVES.robbers.atOnce.max, 1, 'CURVES.robbers.atOnce.max');
 
 // Fractions and angles
-for (const [path, v] of [['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel]]) {
+for (const [path, v] of /** @type {[string, number][]} */ ([['CURVES.robbers.toughChancePerLevel', CURVES.robbers.toughChancePerLevel]])) {
   assert.ok(v <= 1, `${path} is a fraction between 0 and 1 (it is ${v})`);
 }
 assert.ok(CFG.swingHalfArc <= Math.PI, 'CFG.swingHalfArc is in radians and can be at most 3.14 (a full half circle each side)');

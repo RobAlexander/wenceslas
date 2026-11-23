@@ -40,7 +40,10 @@ export function nudgeAim(v, dx, dy) {
   return Math.min(len, AIM_CAP) >= AIM_MIN ? Math.atan2(v.y, v.x) : null;
 }
 
-/** @param {HTMLCanvasElement} canvas */
+// The canvas, as far as input needs it (so a test can pass a small fake).
+/** @typedef {{ addEventListener: HTMLCanvasElement['addEventListener'], getBoundingClientRect(): { left: number, top: number, width: number, height: number } }} CanvasLike */
+
+/** @param {CanvasLike} canvas */
 export function createInput(canvas) {
   /** @type {Set<string>} key codes held down */
   const keys = new Set();

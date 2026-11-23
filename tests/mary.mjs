@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { World } from '../js/world.js';
 import { makeRng } from '../js/rng.js';
+import { pageHolding } from './helpers.mjs';
 import { nightParams, bossInfo, maryStats, CFG, NIGHTS } from '../js/config.js';
 
 const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
@@ -62,7 +63,7 @@ for (let n = 1; n <= NIGHTS; n++) assert.equal(nightParams(n).bossNo > 0, n % 3 
   const { w, events } = quietWorld(6);
   w.king.god = true;
   w.delivered = w.p.foodTarget - 1;
-  w.line = [{ food: 'bread' }];
+  w.line = [pageHolding('bread')];
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.ok(w.boss && w.boss.kind === 'mary', 'Mary comes on night 6');
@@ -72,7 +73,7 @@ for (let n = 1; n <= NIGHTS; n++) assert.equal(nightParams(n).bossNo > 0, n % 3 
 }
 {
   const { w } = quietWorld(9);
-  w.king.god = true; w.delivered = w.p.foodTarget - 1; w.line = [{ food: 'bread' }];
+  w.king.god = true; w.delivered = w.p.foodTarget - 1; w.line = [pageHolding('bread')];
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.equal(w.boss?.kind, 'boleslaus', 'and Prince Boleslaus on night 9');
@@ -337,7 +338,7 @@ function near(a, b, eps) { assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`); }
     const toward = b && b.state === 'rest' ? { x: b.x, y: b.y } : null;
     const mx = toward ? Math.sign(toward.x - w.king.x) : Math.cos(a), my = toward ? Math.sign(toward.y - w.king.y) : Math.sin(a * 1.3);
     w.update(1 / 60, { mx, my, ax: b?.x ?? 0, ay: (b?.y ?? 0) - 8, swing: true });
-    if (b) for (const v of [b.x, b.y, b.t, b.dx, b.dy]) assert.ok(Number.isFinite(v));
+    if (b?.kind === 'mary') for (const v of [b.x, b.y, b.t, b.dx, b.dy]) assert.ok(Number.isFinite(v));
     for (const s of w.arrows) assert.ok(Number.isFinite(s.x) && Number.isFinite(s.y));
     if (w.done) break;
   }

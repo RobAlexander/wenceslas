@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { World } from '../js/world.js';
 import { makeRng } from '../js/rng.js';
+import { pageHolding } from './helpers.mjs';
 import { nightParams, parTime, frostyStats, CFG, NIGHTS } from '../js/config.js';
 
 const STILL = { mx: 0, my: 0, ax: 0, ay: 0, swing: false };
@@ -55,7 +56,7 @@ assert.equal(parTime(5, 1), parTime(5) + CFG.parBoss, 'a boss night has extra pa
   const { w, events } = quietWorld(3);
   w.king.god = true;
   w.delivered = w.p.foodTarget - 1;
-  w.line = [{ food: 'bread' }]; // one more item to hand over
+  w.line = [pageHolding('bread')]; // one more item to hand over
   w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.equal(w.delivered, w.p.foodTarget);
@@ -68,7 +69,7 @@ assert.equal(parTime(5, 1), parTime(5) + CFG.parBoss, 'a boss night has extra pa
 {
   const { w } = quietWorld(2);
   w.delivered = w.p.foodTarget - 1;
-  w.line = [{ food: 'bread' }];
+  w.line = [pageHolding('bread')];
   w.king.god = true; w.king.x = w.oldMan.x; w.king.y = w.oldMan.y;
   step(w, 0.5);
   assert.equal(w.done, true);
@@ -350,7 +351,7 @@ for (const state of ['arrive', 'aim', 'rest']) {
     const a = i / 40;
     w.update(1 / 60, { mx: Math.cos(a), my: Math.sin(a * 1.3), ax: w.boss?.x ?? 0, ay: w.boss?.y ?? 0, swing: i % 25 === 0 });
     const b = w.boss;
-    if (b) for (const v of [b.x, b.y, b.dx, b.dy, b.t]) assert.ok(Number.isFinite(v));
+    if (b?.kind === 'frosty') for (const v of [b.x, b.y, b.dx, b.dy, b.t]) assert.ok(Number.isFinite(v));
     if (w.done) break;
   }
 }

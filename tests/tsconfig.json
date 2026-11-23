@@ -1,0 +1,20 @@
+{
+  // Type-checks the tests against the game's own types, so a test that drifts from js/ (a renamed property, a changed
+  // argument) fails `npm run typecheck`. It is the strict config with strictNullChecks and noImplicitAny off: the tests
+  // are full of small untyped helpers and null-tolerant asserts, and what matters here is the calls into js/.
+  // Files that can't pass without `any`, because they fake big browser objects (AudioContext, Response...), are
+  // excluded below. Fix one, then take it off the list.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "types": ["node"]
+  },
+  "include": ["*.mjs", "../js/**/*.js"],
+  // Not checked yet, each because it fakes big browser objects that can't satisfy the real types without `any`:
+  //   audio.mjs, music.mjs   a fake AudioContext, and setInterval / setTimeout replaced to run the music by hand
+  //   boot.mjs               a fake window with AudioContext, fetch, matchMedia and a canvas
+  //   screens.mjs, snapshot.mjs, smoke.mjs   the node `canvas` package (or a stub) standing in for the DOM canvas
+  // (audio.mjs and music.mjs also read a union without narrowing it: MusicPlan, and music Cells.)
+  "exclude": ["audio.mjs", "music.mjs", "boot.mjs", "screens.mjs", "snapshot.mjs", "smoke.mjs"]
+}

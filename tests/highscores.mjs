@@ -87,9 +87,9 @@ const entry = (name, score, extra = {}) => ({ name, score, night: 3, hard: false
 // bad entries are refused
 {
   const s = makeStore(() => fakeStorage());
-  assert.equal(s.insert({ name: '', score: 10 }), 0);
-  assert.equal(s.insert({ name: '   ', score: 10 }), 0, 'spaces are not a name');
-  assert.equal(s.insert({ name: 'AAA', score: NaN }), 0);
+  assert.equal(s.insert(entry('', 10)), 0);
+  assert.equal(s.insert(entry('   ', 10)), 0, 'spaces are not a name');
+  assert.equal(s.insert(entry('AAA', NaN)), 0);
   assert.equal(s.insert(null), 0);
   assert.deepEqual(s.load(), []);
 }
