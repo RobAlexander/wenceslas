@@ -246,7 +246,8 @@ export const CFG = {
   nicholasHp: 20,           // sword hits to kill him
   nicholasHpStep: 1,        // more health each later time
   nicholasRadius: 12,       // how big he is, for the sword
-  nicholasAppear: 1.5,      // seconds he takes to appear, in a golden light (he can't be hit yet)
+  nicholasAppear: 3.5,      // seconds he takes to appear, in a golden light (he can't be hit yet). His arrival stinger is 5.7 s:
+                            // this plus his first think (nicholasThinkMin to Max) comes out about as long, so the theme starts as he first acts.
   nicholasWalkSpeed: 30,    // drifting to keep his distance. Keep this well under kingSpeed (85).
   nicholasKeepNear: 90,     // he backs away when Wenceslas is closer than this...
   nicholasKeepFar: 150,     // ...and drifts closer when he is farther than this

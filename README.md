@@ -85,7 +85,7 @@ Sound starts at the first key press or click, because browsers don't allow it so
   Stages change only at phrase boundaries, and without progress the music keeps looping at its current stage.
 - **Stingers and the boss theme:** a stinger is a short phrase played once over the music (`STINGERS` in
   `js/music-data.js`), made from a MIDI file with `node tools/midi-to-stinger.mjs file.mid`. Frosty's arrival stinger
-  comes from `frosty-arrive.mid` and Mary's from `mary.mid`. When he arrives the night's music cuts, the stinger plays alone, and the boss theme
+  comes from `frosty-arrive.mid`, Mary's from `mary.mid`, and the other two bosses' from `boleslaus.mid` and `nicholas.mid`. When he arrives the night's music cuts, the stinger plays alone, and the boss theme
   (`BOSS_SONG`) begins just as it ends. The theme is built from the stinger's figure (its first phrase is those same
   eleven notes, an octave up) at the stinger's tempo, and it follows his health: stage 0 at the start, stage 1 (faster,
   with a choir) after he has lost a third of his health, stage 2 (faster again, with a bell) after two thirds. When he

@@ -30,7 +30,7 @@ const EVENT_SFX = {
 const VARIED = new Set(['swing', 'hit', 'pickup', 'foodDrop', 'deliver']);   // a touch of pitch variation
 // Each boss's arrival stinger (see STINGERS in music-data.js); a boss with none gets the theme at once.
 /** @type {Record<string, string | undefined>} */
-const BOSS_STINGER = { frosty: 'frostyArrive', mary: 'maryArrive' };
+const BOSS_STINGER = { frosty: 'frostyArrive', mary: 'maryArrive', boleslaus: 'boleslausArrive', nicholas: 'nicholasArrive' };
 const MAX_AT_ONCE = 4;                                                       // per effect, so nothing machine-guns
 
 const MUTE_KEY = 'wenceslas.muted';
@@ -181,7 +181,7 @@ export function createAudio({
     // arrival stinger plays alone and the boss theme starts as it ends. While the boss fights, the theme gets faster and
     // fuller as it is hurt; when it falls the music stops (for the snowball burst, or the ice), and the
     // night-end music comes after.
-    /** @param {number | null} frac @param {string} [kind]  which boss: 'frosty' or 'mary' */
+    /** @param {number | null} frac @param {string} [kind]  which boss: 'frosty', 'mary', 'boleslaus' or 'nicholas' */
     setBoss(frac, kind = 'frosty') {
       const was = cur.boss;
       if (frac === was) return;

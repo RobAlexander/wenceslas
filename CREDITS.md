@@ -43,4 +43,8 @@ and its instrument samples (bell, choir, strings, bass, pluck, flute, percussion
   `tools/midi-to-stinger.mjs`. Dedicated to the public domain (CC0 1.0).
 - Mary's arrival stinger: the notes of `mary.mid`, by the project's author, converted the same way. Dedicated to
   the public domain (CC0 1.0).
+- Prince Boleslaus's arrival stinger: the notes of `boleslaus.mid`, by the project's author, converted the same way.
+  Dedicated to the public domain (CC0 1.0).
+- St Nicholas's arrival stinger: the notes of `nicholas.mid`, by the project's author, converted the same way.
+  Dedicated to the public domain (CC0 1.0).
 - The boss theme: an original piece built from Frosty's stinger's motif, also dedicated to the public domain (CC0 1.0).

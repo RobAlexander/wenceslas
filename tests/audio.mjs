@@ -270,14 +270,60 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   audio.setBoss(null, 'mary');
   assert.equal(m.running, false, 'it stops when she falls');
 }
-// ...and a boss with no stinger (Prince Boleslaus, for now) gets the theme at once
+// ---- Boleslaus's arrival: his stinger plays alone and the boss theme starts as it ends
+{
+  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { stingerLength } = await import('../js/music.js');
+  const { audio, log } = await setup();
+  audio.unlock(); await tick();
+  audio.setNight(9);
+  audio.onState('play', 'title');
+  const m = audio.music;
+  const before = log.started.length;
+  audio.setBoss(1, 'boleslaus');
+  assert.equal(m.song, BOSS_SONG, 'the boss theme plays for him too');
+  assert.ok(log.started.length - before > 30, 'his stinger is played: ' + (log.started.length - before));
+  const notes = log.started.length;
+  log.ctx.currentTime = 4; m.pump();
+  assert.equal(log.started.length, notes, 'the theme holds back while the stinger plays');
+  log.ctx.currentTime = stingerLength('boleslausArrive') + 0.1; m.pump();
+  assert.ok(log.started.length > notes, 'and starts as it ends');
+  audio.setBoss(0.4, 'boleslaus');
+  assert.equal(m.pendingStage, 1, 'and follows his health like his');
+  audio.setBoss(null, 'boleslaus');
+  assert.equal(m.running, false, 'it stops when he falls');
+}
+// ---- Nicholas's arrival: his stinger plays alone and the boss theme starts as it ends
+{
+  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { stingerLength } = await import('../js/music.js');
+  const { audio, log } = await setup();
+  audio.unlock(); await tick();
+  audio.setNight(12);
+  audio.onState('play', 'title');
+  const m = audio.music;
+  const before = log.started.length;
+  audio.setBoss(1, 'nicholas');
+  assert.equal(m.song, BOSS_SONG, 'the boss theme plays for him too');
+  assert.ok(log.started.length - before > 30, 'his stinger is played: ' + (log.started.length - before));
+  const notes = log.started.length;
+  log.ctx.currentTime = 4; m.pump();
+  assert.equal(log.started.length, notes, 'the theme holds back while the stinger plays');
+  log.ctx.currentTime = stingerLength('nicholasArrive') + 0.1; m.pump();
+  assert.ok(log.started.length > notes, 'and starts as it ends');
+  audio.setBoss(0.4, 'nicholas');
+  assert.equal(m.pendingStage, 1, 'and follows his health like his');
+  audio.setBoss(null, 'nicholas');
+  assert.equal(m.running, false, 'it stops when he falls');
+}
+// ...and a boss with no stinger gets the theme at once
 {
   const { BOSS_SONG } = await import('../js/music-data.js');
   const { audio, log } = await setup();
   audio.unlock(); await tick();
   audio.onState('play', 'title');
   const before = log.started.length;
-  audio.setBoss(1, 'boleslaus');   // (no stinger yet)
+  audio.setBoss(1, 'nobody');
   assert.equal(audio.music.song, BOSS_SONG);
   assert.ok(log.started.length - before > 10, 'the first phrase is scheduled at once: ' + (log.started.length - before));
 }

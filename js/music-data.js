@@ -148,6 +148,70 @@ export const STINGERS = {
       { instrument: 'bell', ch: 0, shift: 24, gain: 0.95, minVel: 95 },
     ],
   },
+
+  // Prince Boleslaus arrives (boleslaus.mid): a heavy tread that climbs and then sinks to a long low A.
+  // Voiced like Frosty's: bass as written, strings an octave up, and the bell on the loudest notes.
+  boleslausArrive: {
+    bpm: 135,
+    notes: [
+      [42, 0, 0.99, 100],
+      [41, 1, 0.115, 95],
+      [45, 1.125, 0.115, 95],
+      [46, 1.25, 0.24, 100],
+      [48, 1.5, 0.115, 100],
+      [47, 1.625, 0.365, 100],
+      [38, 2, 0.49, 60],
+      [40, 2.5, 0.49, 60],
+      [40, 3, 0.365, 85],
+      [41, 3.375, 0.365, 85],
+      [42, 3.75, 0.24, 85],
+      [37, 4, 0.99, 50],
+      [40, 5, 0.74, 95],
+      [41, 5.75, 0.24, 90],
+      [43, 6, 0.115, 60],
+      [35, 6.125, 0.865, 55],
+      [37, 7, 0.74, 65],
+      [38, 7.75, 0.24, 65],
+      [37, 8, 0.49, 70],
+      [35, 8.5, 0.49, 70],
+      [38, 9, 0.24, 70],
+      [35, 9.25, 0.24, 70],
+      [33, 9.5, 0.49, 75],
+      [34, 10, 2.49, 75],
+    ],
+    voices: [
+      { instrument: 'strings', ch: 1, shift: 12, gain: 2.6 },
+      { instrument: 'bass', ch: 2, gain: 2.4 },
+      { instrument: 'bell', ch: 0, shift: 24, gain: 0.95, minVel: 95 },
+    ],
+  },
+
+  // St Nicholas arrives (nicholas.mid): slow, high and sustained, a descending line. It is higher than the
+  // others, so: choir and strings as written, the bass two octaves down for weight, and the bell only an
+  // octave up (two would be shrill).
+  nicholasArrive: {
+    bpm: 143,
+    notes: [
+      [64, 0, 0.49, 100],
+      [70, 1, 0.49, 50],
+      [59, 1.5, 1.49, 95],
+      [62, 3, 0.99, 95],
+      [63, 4, 0.99, 95],
+      [61, 5, 0.99, 95],
+      [60, 6, 0.99, 90],
+      [60, 7, 0.99, 85],
+      [66, 8, 0.99, 100],
+      [65, 9, 0.99, 95],
+      [64, 10, 0.99, 90],
+      [64, 11, 2.49, 90],
+    ],
+    voices: [
+      { instrument: 'choir', ch: 3, gain: 1.0 },
+      { instrument: 'strings', ch: 1, gain: 2.4 },
+      { instrument: 'bass', ch: 2, shift: -24, gain: 2.4 },
+      { instrument: 'bell', ch: 0, shift: 12, gain: 0.95, minVel: 95 },
+    ],
+  },
 };
 
 // The boss theme, for Frosty. It grows out of the arrival stinger: that figure (A, D, F#, Bb, C, Ab, Bb, C,

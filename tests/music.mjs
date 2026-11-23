@@ -303,6 +303,23 @@ assert.equal(stageFor(1), 4);
   for (const [midi] of st.notes) assert.ok(midi >= 36 && midi <= 48, 'low, like Frosty\'s: ' + midi);
 }
 
+// ---- Boleslaus's and Nicholas's stingers: from boleslaus.mid and nicholas.mid
+for (const [name, bpm, count, lastBeat, lo, hi] of [['boleslausArrive', 135, 24, 12.49, 33, 48], ['nicholasArrive', 143, 12, 13.49, 59, 70]]) {
+  const samples = makeSamples();
+  const st = STINGERS[name];
+  assert.equal(st.bpm, bpm, 'the tempo of its midi file');
+  assert.equal(st.notes.length, count, 'its notes');
+  const { events, length } = stingerEvents(st, 0, samples);
+  near(length, lastBeat * (60 / bpm), 0.02);
+  assert.ok(length > 5 && length < 6, 'about 5.5 s: ' + length);
+  let expected = 0;
+  for (const n of st.notes) for (const v of st.voices) if (n[3] >= (v.minVel ?? 0)) expected++;
+  assert.equal(events.length, expected);
+  for (const e of events) assert.ok(Number.isFinite(e.rate) && e.rate > 0.1 && e.rate < 6 && e.vol > 0 && e.vol < 4, name + ' rate ' + e.rate + ' vol ' + e.vol);
+  assert.equal(stingerLength(name), length);
+  for (const [midi] of st.notes) assert.ok(midi >= lo && midi <= hi, name + ' note in range: ' + midi);
+}
+
 // ---- stingers: played over the music, which ducks and then comes back
 {
   const realSetInterval = globalThis.setInterval, realClear = globalThis.clearInterval, realTimeout = globalThis.setTimeout, realClearT = globalThis.clearTimeout;
