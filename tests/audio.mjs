@@ -249,7 +249,7 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
 }
 // ---- Mary's arrival: her stinger plays alone and the boss theme starts as it ends
 {
-  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { BOSS_SONG, MARY_SONG } = await import('../js/music-data.js');
   const { stingerLength } = await import('../js/music.js');
   const { audio, log } = await setup();
   audio.unlock(); await tick();
@@ -258,7 +258,8 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   const m = audio.music;
   const before = log.started.length;
   audio.setBoss(1, 'mary');
-  assert.equal(m.song, BOSS_SONG, 'the boss theme plays for her too');
+  assert.equal(m.song, MARY_SONG, 'her own theme plays, not Frosty\'s');
+  assert.notEqual(m.song, BOSS_SONG);
   assert.ok(log.started.length - before > 30, 'her stinger is played: ' + (log.started.length - before));
   const notes = log.started.length;
   log.ctx.currentTime = 4; m.pump();
@@ -272,7 +273,7 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
 }
 // ---- Boleslaus's arrival: his stinger plays alone and the boss theme starts as it ends
 {
-  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { BOSS_SONG, BOLESLAUS_SONG } = await import('../js/music-data.js');
   const { stingerLength } = await import('../js/music.js');
   const { audio, log } = await setup();
   audio.unlock(); await tick();
@@ -281,7 +282,8 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   const m = audio.music;
   const before = log.started.length;
   audio.setBoss(1, 'boleslaus');
-  assert.equal(m.song, BOSS_SONG, 'the boss theme plays for him too');
+  assert.equal(m.song, BOLESLAUS_SONG, 'his own theme plays, not Frosty\'s');
+  assert.notEqual(m.song, BOSS_SONG);
   assert.ok(log.started.length - before > 30, 'his stinger is played: ' + (log.started.length - before));
   const notes = log.started.length;
   log.ctx.currentTime = 4; m.pump();
@@ -295,7 +297,7 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
 }
 // ---- Nicholas's arrival: his stinger plays alone and the boss theme starts as it ends
 {
-  const { BOSS_SONG } = await import('../js/music-data.js');
+  const { BOSS_SONG, NICHOLAS_SONG } = await import('../js/music-data.js');
   const { stingerLength } = await import('../js/music.js');
   const { audio, log } = await setup();
   audio.unlock(); await tick();
@@ -304,7 +306,8 @@ for (const s of ['title', 'highscores', 'nameEntry']) assert.deepEqual([musicPla
   const m = audio.music;
   const before = log.started.length;
   audio.setBoss(1, 'nicholas');
-  assert.equal(m.song, BOSS_SONG, 'the boss theme plays for him too');
+  assert.equal(m.song, NICHOLAS_SONG, 'his own theme plays, not Frosty\'s');
+  assert.notEqual(m.song, BOSS_SONG);
   assert.ok(log.started.length - before > 30, 'his stinger is played: ' + (log.started.length - before));
   const notes = log.started.length;
   log.ctx.currentTime = 4; m.pump();

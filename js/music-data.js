@@ -214,7 +214,7 @@ export const STINGERS = {
   },
 };
 
-// The boss theme, for Frosty. It grows out of the arrival stinger: that figure (A, D, F#, Bb, C, Ab, Bb, C,
+// Frosty's boss theme. (Mary, Prince Boleslaus and St Nicholas each have their own, below.) It grows out of the arrival stinger: that figure (A, D, F#, Bb, C, Ab, Bb, C,
 // A, C#, A) fills two bars exactly, so it is phrase A; phrase B is the same figure a tritone away; C builds
 // on it in running eighths; D is the turnaround. The same tempo as the stinger (149 bpm), so the stinger runs
 // straight into the theme. The game picks the stage from how much of Frosty's health has gone: the more
@@ -264,6 +264,136 @@ export const BOSS_SONG = {
   phrases: [BOSS.A, BOSS.B, BOSS.C, BOSS.D],
   rowsPerPhrase: ROWS_PER_PHRASE,
   stages: BOSS_STAGES,
+  thresholds: BOSS_THRESHOLDS,
+};
+
+// ---- The other bosses' themes. Each is built like Frosty's: phrase A is its boss's arrival stinger (the notes that
+// fall on an eighth-note row), at the stinger's tempo so the stinger runs straight into the theme; B, C and D carry
+// it on; and the three stages (by BOSS_THRESHOLDS) get faster and fuller as the boss is hurt.
+
+// Mary (mary.mid, 113 bpm): cold and creeping. A is the chromatic climb from E, an octave up on the strings over a
+// trudging bass; B is the quick figure that ends the stinger, ending on a tritone; C is a chromatic spiral, like
+// her spinning attack; D is the ring bursting outward, a high held chord.
+const MARY = {
+  A: {
+    lead: 'E3 . F#3 G#3 G#3 . A3 . | F#3 . F#3 . . . F3 .',
+    harm: 'B3 . . . . . . . | C4 . . . . . . .',
+    bass: 'E2 . . . E2 . E2 . | E2 . . . E2 . E2 .',
+    perc: 'K . H . K . H . | K . H . K . H .',
+  },
+  B: {
+    lead: 'A3 E3 D3 F3 A3 G#3 Bb3 . | Bb3 . . . . . E3 .',
+    harm: 'E4 . . . . . . . | D4 . . . . . . .',
+    bass: 'E2 . F2 . F#2 . G2 . | G#2 . A2 . Bb2 . B2 .',
+    perc: 'K . H . S . H H | K . H K S . H H',
+  },
+  C: {
+    lead: 'E3 F3 F#3 G3 G#3 G3 F#3 F3 | F3 F#3 G3 G#3 A3 G#3 G3 F#3',
+    harm: 'E4 . . . . . . . | F4 . . . . . . .',
+    bass: 'E2 E2 E2 E2 E2 E2 E2 E2 | F2 F2 F2 F2 F2 F2 F2 F2',
+    perc: 'K H S H K H S H | K H S H K H S S',
+  },
+  D: {
+    lead: 'A4 . . . . . . . | Bb4 . . . . . . .',
+    harm: 'E5 . . . . . . . | E5 . . . . . . .',
+    bass: 'E2 . . . E2 . . . | E2 . . . E2 . E2 E2',
+    perc: 'K . S . K . S . | K S K S S S S S',
+  },
+};
+
+// Prince Boleslaus (boleslaus.mid, 135 bpm): a march. A is the heavy opening, an octave up on the strings over a
+// dotted pedal on F#; B is the low line that sinks away at the end of the stinger, the bass taking it with the
+// lead a fifth above; C is the fight, running eighths over a bass ostinato; D is the lance charge, the flourish
+// flung high over a held tritone, then a drum fill.
+const BOLESLAUS = {
+  A: {
+    lead: 'F#3 . F3 C4 D3 E3 E3 . | C#3 . E3 . G3 . C#3 .',
+    harm: 'C#4 . . . . . . . | B3 . . . . . . .',
+    bass: 'F#2 . . F#2 . . F#2 . | C#2 . . C#2 . . C#2 .',
+    perc: 'K . S S K . S . | K . S S K . S .',
+  },
+  B: {
+    lead: 'G#4 . F#4 . A4 . F#4 . | E4 . F4 . . . . .',
+    harm: 'C#4 . . . . . . . | E4 . . . . . . .',
+    bass: 'C#3 . B2 . D3 . B2 . | A2 . Bb2 . . . . .',
+    perc: 'K . S . K . S S | K . S . K S K S',
+  },
+  C: {
+    lead: 'F#3 F#3 G3 F#3 A3 F#3 G3 F#3 | B3 B3 C4 B3 D4 B3 C4 B3',
+    harm: 'F#4 . . . . . . . | B4 . . . . . . .',
+    bass: 'F#2 F#2 F#2 F#2 F#2 F#2 F#2 F#2 | B2 B2 B2 B2 B2 B2 B2 B2',
+    perc: 'K . S . K . S . | K S K S S S S S',
+  },
+  D: {
+    lead: 'F4 A4 Bb4 C5 B4 . . . | A4 . . . . . . .',
+    harm: 'C4 . . . . . . . | C4 . . . . . . .',
+    bass: 'F#2 . . . . . . . | F#2 . . . F#2 . F#2 F#2',
+    perc: 'K . S . K . S . | K S K S S S S S',
+  },
+};
+
+// St Nicholas (nicholas.mid, 143 bpm): a solemn chant. A is the stinger itself, sung by the choir as written over
+// open fifths and a low E; B is its answer, F#, F, E, with the bass stepping down; C is a chant climbing the
+// chromatic cell in quarter notes, building toward the lightning; D is the lightning: the E and the Bb a tritone
+// above it, struck high, then a crash.
+const NICHOLAS = {
+  A: {
+    lead: 'E4 . Bb4 B3 . . D4 . | D#4 . C#4 . C4 . C4 .',
+    harm: 'B3 . . . . . . . | G#3 . . . . . . .',
+    bass: 'E2 . . . E2 . . . | E2 . . . E2 . . .',
+    perc: 'K . . . H . . . | H . . . H . . .',
+  },
+  B: {
+    lead: 'F#4 . F4 . E4 . E4 . | . . . . . . B3 .',
+    harm: 'A3 . . . . . . . | G#3 . . . . . . .',
+    bass: 'E2 . . . D#2 . . . | D2 . . . C#2 . . .',
+    perc: 'K . . . H . H . | H . . . H . K .',
+  },
+  C: {
+    lead: 'B3 . C4 . C#4 . D4 . | D#4 . E4 . F4 . F#4 .',
+    harm: 'B3 . . . . . . . | B3 . . . . . . .',
+    bass: 'E2 E2 E2 E2 E2 E2 E2 E2 | E2 E2 E2 E2 F2 F2 F2 F2',
+    perc: 'K . H . K . H . | K . H . K H K K',
+  },
+  D: {
+    lead: 'E5 . . . Bb5 . . . | E5 . . . . . . .',
+    harm: 'Bb4 . . . . . . . | E4 . . . . . . .',
+    bass: 'E2 . . . . . . . | E2 . . . E2 . E2 E2',
+    perc: 'K . S . K . S . | K S K S S S S S',
+  },
+};
+
+// The stages of those themes: stage 0 at the stinger's tempo, then about 5% faster each time and fuller. (Strings
+// are voiced quietly for harmony, so the lead is brought forward with a gain, as in Frosty's.)
+/**
+ * @param {number} bpm @param {Instrument} lead @param {Instrument} harmony @param {Instrument} harmony2
+ * @param {number[]} gains @param {number[]} [phrases]  the phrases the later stages play
+ * @returns {{ phrases: number[], bpm: number, voices: number[], instruments: (Instrument | null)[], gains?: number[] }[]}
+ */
+const bossStages = (bpm, lead, harmony, harmony2, gains, phrases = [0, 1, 2, 3]) => [
+  { phrases: [0, 1], bpm, voices: [1, 0, 1, 1], instruments: [lead, null, 'bass', 'perc'], gains },
+  { phrases, bpm: Math.round(bpm * 1.05), voices: [1, 1, 1, 1], instruments: [lead, harmony, 'bass', 'perc'], gains },
+  { phrases, bpm: Math.round(bpm * 1.1), voices: [1, 1, 1, 1], instruments: [lead, harmony2, 'bass', 'perc'], gains },
+];
+
+export const MARY_SONG = {
+  phrases: [MARY.A, MARY.B, MARY.C, MARY.D],
+  rowsPerPhrase: ROWS_PER_PHRASE,
+  stages: bossStages(113, 'strings', 'choir', 'bell', [2.4, 1, 1.3, 1]),
+  thresholds: BOSS_THRESHOLDS,
+};
+
+export const BOLESLAUS_SONG = {
+  phrases: [BOLESLAUS.A, BOLESLAUS.B, BOLESLAUS.C, BOLESLAUS.D],
+  rowsPerPhrase: ROWS_PER_PHRASE,
+  stages: bossStages(135, 'strings', 'choir', 'bell', [2.4, 1, 1.3, 1]),
+  thresholds: BOSS_THRESHOLDS,
+};
+
+export const NICHOLAS_SONG = {
+  phrases: [NICHOLAS.A, NICHOLAS.B, NICHOLAS.C, NICHOLAS.D],
+  rowsPerPhrase: ROWS_PER_PHRASE,
+  stages: bossStages(143, 'choir', 'strings', 'bell', [2.0, 1.6, 1.3, 1]),
   thresholds: BOSS_THRESHOLDS,
 };
 

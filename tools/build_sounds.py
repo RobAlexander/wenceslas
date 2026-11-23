@@ -314,7 +314,8 @@ def write_credits(rows):
         '  Dedicated to the public domain (CC0 1.0).',
         '- St Nicholas\'s arrival stinger: the notes of `nicholas.mid`, by the project\'s author, converted the same way.',
         '  Dedicated to the public domain (CC0 1.0).',
-        '- The boss theme: an original piece built from Frosty\'s stinger\'s motif, also dedicated to the public domain (CC0 1.0).',
+        '- The boss themes: original pieces, each built from its boss\'s stinger\'s motif (Frosty\'s, Mary\'s, Prince Boleslaus\'s and',
+        '  St Nicholas\'s), also dedicated to the public domain (CC0 1.0).',
         '',
     ]
     (ROOT / 'CREDITS.md').write_text('\n'.join(lines))

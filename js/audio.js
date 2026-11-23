@@ -5,7 +5,7 @@
 // The game talks to it through a few calls: handle(events), onState(...), setProgress(...).
 
 import { createMusic, stageFor, stingerLength } from './music.js';
-import { SONG, BOSS_SONG, BOSS_THRESHOLDS } from './music-data.js';
+import { SONG, BOSS_SONG, MARY_SONG, BOLESLAUS_SONG, NICHOLAS_SONG, BOSS_THRESHOLDS } from './music-data.js';
 import { arrangement } from './arrange.js';
 
 // Effects in audio/sfx/, with how loud each plays (the files are all normalised, but not equally loud to the ear).
@@ -31,6 +31,9 @@ const VARIED = new Set(['swing', 'hit', 'pickup', 'foodDrop', 'deliver']);   // 
 // Each boss's arrival stinger (see STINGERS in music-data.js); a boss with none gets the theme at once.
 /** @type {Record<string, string | undefined>} */
 const BOSS_STINGER = { frosty: 'frostyArrive', mary: 'maryArrive', boleslaus: 'boleslausArrive', nicholas: 'nicholasArrive' };
+// Each boss's own fight music (see music-data.js); a boss with none plays Frosty's theme, BOSS_SONG.
+/** @type {Record<string, typeof BOSS_SONG | undefined>} */
+const BOSS_THEME = { mary: MARY_SONG, boleslaus: BOLESLAUS_SONG, nicholas: NICHOLAS_SONG };
 const MAX_AT_ONCE = 4;                                                       // per effect, so nothing machine-guns
 
 const MUTE_KEY = 'wenceslas.muted';
@@ -38,8 +41,8 @@ const MUTE_KEY = 'wenceslas.muted';
 /** @typedef {{ run: false } | { run: true, stage: number | null, duck: number }} MusicPlan */
 
 // What the music should be doing in each game state. stage: null leaves the current stage alone.
-// boss: while Frosty is out, how much of his health is left (0 to 1), else null. Then the boss theme
-// plays, and the more damage he has taken the later its stage.
+// boss: while a boss is out, how much of its health is left (0 to 1), else null. Then that boss's theme
+// plays, and the more damage it has taken the later its stage.
 /** @param {string} state @param {number} [progress] @param {number | null} [boss] @returns {MusicPlan} */
 export function musicPlan(state, progress = 0, boss = null) {
   switch (state) {
@@ -189,10 +192,11 @@ export function createAudio({
       if (!music) return;
       if (was === null && frac !== null) {
         const stinger = BOSS_STINGER[kind];
+        const song = BOSS_THEME[kind] ?? BOSS_SONG;
         if (stinger) {
-          music.restart(0, BOSS_SONG, stingerLength(stinger) - 0.07);
+          music.restart(0, song, stingerLength(stinger) - 0.07);
           music.stinger(stinger, false);
-        } else music.restart(0, BOSS_SONG);
+        } else music.restart(0, song);
         applyPlan();
       } else if (frac === null) music.stop(0.4);
       else applyPlan();

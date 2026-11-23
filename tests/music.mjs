@@ -1,7 +1,7 @@
 // Tests for the music engine: parsing, the sequencer's stage rules, instrument samples, and
 // scheduling against a fake AudioContext. Run with: node tests/music.mjs
 import assert from 'node:assert/strict';
-import { SONG, STINGERS, BOSS_SONG, BOSS_THRESHOLDS } from '../js/music-data.js';
+import { SONG, STINGERS, BOSS_SONG, MARY_SONG, BOLESLAUS_SONG, NICHOLAS_SONG, BOSS_THRESHOLDS } from '../js/music-data.js';
 import { noteToMidi, midiToFreq, parseRow, stageFor, Sequencer, makeSamples, createMusic, phraseEvents, stingerEvents, stingerLength, SAMPLE_RATE } from '../js/music.js';
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
@@ -213,36 +213,56 @@ assert.equal(stageFor(1), 4);
   globalThis.setInterval = realSetInterval; globalThis.clearInterval = realClear;
 }
 
-// ---- the boss theme: a valid song, in range, that really grows out of the arrival stinger
-{
-  const seq = new Sequencer(BOSS_SONG);
-  assert.equal(seq.parsed.length, BOSS_SONG.phrases.length);
+// ---- the boss themes: valid songs, in range, that really grow out of their arrival stingers
+// shift: how far above the stinger the theme's lead plays it. A stinger note that is not on an eighth-note row is left out.
+function checkBossTheme(song, stinger, shift, who) {
+  const seq = new Sequencer(song);
+  assert.equal(seq.parsed.length, song.phrases.length, who);
   for (const [i, parts] of seq.parsed.entries()) {
-    for (const cells of parts) assert.equal(cells.length, BOSS_SONG.rowsPerPhrase, 'boss phrase ' + i);
-    assert.ok(parts[0][0]?.midi, 'boss phrase ' + i + ' starts on a note');
-    for (const cell of parts[0].concat(parts[1])) if (cell?.midi) assert.ok(cell.midi >= 48 && cell.midi <= 84, 'lead and harmony range');
-    for (const cell of parts[2]) if (cell?.midi) assert.ok(cell.midi >= 36 && cell.midi <= 60, 'bass range');
+    for (const cells of parts) assert.equal(cells.length, song.rowsPerPhrase, who + ' phrase ' + i);
+    assert.ok(parts[0][0]?.midi, who + ' phrase ' + i + ' starts on a note');
+    for (const cell of parts[0].concat(parts[1])) if (cell?.midi) assert.ok(cell.midi >= 48 && cell.midi <= 84, who + ' lead and harmony range: ' + cell.midi);
+    for (const cell of parts[2]) if (cell?.midi) assert.ok(cell.midi >= 36 && cell.midi <= 60, who + ' bass range: ' + cell.midi);
   }
-  for (const [i, st] of BOSS_SONG.stages.entries()) {
-    for (const id of st.phrases) assert.ok(id >= 0 && id < BOSS_SONG.phrases.length, 'boss stage ' + i);
-    st.voices.forEach((on, ch) => { if (on) assert.ok(st.instruments[ch], `boss stage ${i} channel ${ch}`); });
+  for (const [i, st] of song.stages.entries()) {
+    for (const id of st.phrases) assert.ok(id >= 0 && id < song.phrases.length, who + ' stage ' + i);
+    st.voices.forEach((on, ch) => { if (on) assert.ok(st.instruments[ch], `${who} stage ${i} channel ${ch}`); });
     if (i) {
-      const a = BOSS_SONG.stages[i - 1];
-      assert.ok(st.bpm > a.bpm, 'it gets faster as Frosty is hurt');
-      a.voices.forEach((on, ch) => { if (on) assert.ok(st.voices[ch], 'and fuller'); });
+      const a = song.stages[i - 1];
+      assert.ok(st.bpm > a.bpm, who + ': it gets faster as the boss is hurt');
+      a.voices.forEach((on, ch) => { if (on) assert.ok(st.voices[ch], who + ': and fuller'); });
     }
   }
-  assert.equal(BOSS_SONG.stages.length, BOSS_THRESHOLDS.length);
-  assert.deepEqual(BOSS_SONG.stages[0].phrases.slice(0, 1), [0], 'the fight opens on the stinger\'s own figure');
-  assert.equal(BOSS_SONG.stages[0].bpm, STINGERS.frostyArrive.bpm, 'at the stinger\'s tempo, so the stinger runs straight into it');
-  // phrase A's lead is the stinger's notes, on the same beats (a row is half a beat), an octave up
+  assert.equal(song.stages.length, BOSS_THRESHOLDS.length, who);
+  assert.equal(song.thresholds, BOSS_THRESHOLDS, who);
+  assert.deepEqual(song.stages[0].phrases.slice(0, 1), [0], who + ': the fight opens on the stinger\'s own figure');
+  assert.equal(song.stages[0].bpm, stinger.bpm, who + ': at the stinger\'s tempo, so the stinger runs straight into it');
+  // phrase A's lead has the stinger's notes in its first two bars, on the same beats (a row is half a beat)
   const lead = seq.parsed[0][0];
-  const motif = STINGERS.frostyArrive.notes;
-  for (const [midi, beat] of motif) {
-    const cell = lead[Math.round(beat * 2)];
-    assert.ok(cell && cell.midi === midi + 12, `the stinger's note ${midi} at beat ${beat} is in the theme (an octave up)`);
+  let found = 0;
+  for (const [midi, beat] of stinger.notes) {
+    if (beat >= 8 || beat * 2 !== Math.round(beat * 2)) continue;
+    const cell = lead[beat * 2];
+    assert.ok(cell && cell.midi === midi + shift, `${who}: the stinger's note ${midi} at beat ${beat} is in the theme (${shift} up)`);
+    found++;
   }
-  assert.equal(lead.filter((c) => c && c.midi).length, motif.length, 'and nothing else is in that phrase');
+  assert.ok(found >= 8, who + ': most of the stinger is there: ' + found);
+  return { lead, found };
+}
+{
+  const { lead } = checkBossTheme(BOSS_SONG, STINGERS.frostyArrive, 12, 'Frosty');
+  assert.equal(lead.filter((c) => c && c.midi).length, STINGERS.frostyArrive.notes.length, 'and nothing else is in that phrase');
+  const mary = checkBossTheme(MARY_SONG, STINGERS.maryArrive, 12, 'Mary');
+  assert.equal(mary.found, 8);
+  const bol = checkBossTheme(BOLESLAUS_SONG, STINGERS.boleslausArrive, 12, 'Boleslaus');
+  assert.equal(bol.found, 10);
+  const nic = checkBossTheme(NICHOLAS_SONG, STINGERS.nicholasArrive, 0, 'Nicholas');
+  assert.equal(nic.found, 8);
+  assert.equal(nic.lead.filter((c) => c && c.midi).length, 8, 'the choir sings the stinger and nothing else in that phrase');
+  // three themes of their own, not Frosty's
+  assert.notEqual(MARY_SONG, BOSS_SONG);
+  assert.notEqual(JSON.stringify(MARY_SONG.phrases), JSON.stringify(BOLESLAUS_SONG.phrases));
+  assert.notEqual(JSON.stringify(NICHOLAS_SONG.phrases), JSON.stringify(BOSS_SONG.phrases));
   // the boss theme's lead is brought forward with a per-channel gain
   {
     const samples = makeSamples();

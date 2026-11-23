@@ -83,13 +83,15 @@ Sound starts at the first key press or click, because browsers don't allow it so
 - **Adaptive:** each night starts with just the opening phrase, played slowly on a bell. As food is delivered the music
   adds the bass, then strings, then percussion, then a choir, and plays more of the carol until it plays the whole tune.
   Stages change only at phrase boundaries, and without progress the music keeps looping at its current stage.
-- **Stingers and the boss theme:** a stinger is a short phrase played once over the music (`STINGERS` in
-  `js/music-data.js`), made from a MIDI file with `node tools/midi-to-stinger.mjs file.mid`. Frosty's arrival stinger
-  comes from `frosty-arrive.mid`, Mary's from `mary.mid`, and the other two bosses' from `boleslaus.mid` and `nicholas.mid`. When he arrives the night's music cuts, the stinger plays alone, and the boss theme
-  (`BOSS_SONG`) begins just as it ends. The theme is built from the stinger's figure (its first phrase is those same
-  eleven notes, an octave up) at the stinger's tempo, and it follows his health: stage 0 at the start, stage 1 (faster,
-  with a choir) after he has lost a third of his health, stage 2 (faster again, with a bell) after two thirds. When he
-  falls the music stops for the burst of snowballs, then the night-end music plays in the night's own arrangement.
+- **Stingers and the boss themes:** a stinger is a short phrase played once over the music (`STINGERS` in
+  `js/music-data.js`), made from a MIDI file with `node tools/midi-to-stinger.mjs file.mid`. Each boss's arrival
+  stinger comes from a MIDI file in the project root (`frosty-arrive.mid`, `mary.mid`, `boleslaus.mid`, `nicholas.mid`).
+  When a boss arrives the night's music cuts, the stinger plays alone, and that boss's own theme (`BOSS_SONG` for
+  Frosty, `MARY_SONG`, `BOLESLAUS_SONG` and `NICHOLAS_SONG`) begins just as it ends. Each theme is built from its
+  stinger's figure (its first phrase is the same notes, an octave up, or as written for St Nicholas) at the stinger's
+  tempo, and follows the boss's health: stage 0 at the start, stage 1 (faster, with a choir) after the boss has lost a
+  third of its health, stage 2 (faster again, with a bell) after two thirds. When the boss falls the music stops for
+  the burst of snowballs, or the ice, then the night-end music plays in the night's own arrangement.
 - **The tune is a draft.** The melody in `js/music-data.js` is a transcription from memory and hasn't been checked
   against a score. To correct it, edit the `lead` strings there; nothing else depends on the notes.
 
