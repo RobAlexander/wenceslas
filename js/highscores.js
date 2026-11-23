@@ -70,6 +70,7 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
     const raw = read(SCORES_KEY);
     if (raw != null) {
       try {
+        // eslint-disable-next-line no-restricted-syntax -- every entry goes through cleanEntry
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           mem = parsed.map(cleanEntry).filter((e) => e !== null).sort((a, b) => b.score - a.score).slice(0, MAX_SCORES);
@@ -117,6 +118,7 @@ export function makeStore(getStorage = () => globalThis.localStorage) {
     keyBindings() {
       if (memKeys) return cleanBindings(memKeys);
       let raw = null;
+      // eslint-disable-next-line no-restricted-syntax -- cleanBindings validates whatever comes back
       try { raw = JSON.parse(read(KEYS_KEY) ?? 'null'); } catch { /* corrupt: use the defaults */ }
       return cleanBindings(raw);
     },

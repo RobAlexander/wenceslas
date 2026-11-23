@@ -105,10 +105,20 @@ Sound starts at the first key press or click, because browsers don't allow it so
 ## Development
 
 - `npm test` runs all of the checks below. None of them needs a browser.
-- `npm run typecheck` type-checks the game code in `js/` with TypeScript, in strict mode. The game is still plain
-  JavaScript with no build step: TypeScript only reads the `.js` files, and types are given in JSDoc comments such as
-  `/** @param {number} n */`. It runs first in `npm test` and in the Pages workflow. `tests/` and `tools/` aren't checked.
-  Every file in `js/` must pass, including new ones.
+- `npm run typecheck` type-checks with TypeScript, in three passes. The game is still plain JavaScript with no build
+  step: TypeScript only reads the `.js` files, and types are given in JSDoc comments such as `/** @param {number} n */`.
+  It runs first in `npm test` and in the Pages workflow.
+  1. `tsconfig.json`: every file in `js/`, in strict mode, including new ones.
+  2. `tsconfig.index.json`: the same, plus `noUncheckedIndexedAccess` (`arr[i]` and `table[key]` may be `undefined`),
+     for the files listed there. Add a file to the list once it passes; the list is meant to grow.
+  3. `tests/tsconfig.json`: the tests, against the game's own types, with `strictNullChecks` and `noImplicitAny` off. It
+     catches a test drifting from `js/` (a renamed property, a changed argument). The six files that fake big browser
+     objects (audio, music, boot, screens, snapshot, smoke) are on its `exclude` list, with the reason, to shrink over time.
+  `tools/` isn't checked.
+- `npm run lint` runs ESLint on `js/` for what the type checker can't see: `{any}`, `{*}`, `{Function}` and `{Object}`
+  types (also inside others, such as `Record<string, any>`), `@ts-ignore`, `@ts-nocheck` and `@ts-expect-error`, and
+  `JSON.parse` or `.json()` calls (they return `any`; validate the result and say so in a disable comment). It is in
+  `npm test` and the Pages workflow. (typescript-eslint's type-aware rules would catch more, but they can't run on TypeScript 7.)
 - `tests/highscores.mjs`: unit tests for the high score store (ordering, top-10 cut-off, corrupt or unavailable storage).
 - `tests/wolves.mjs`: wolf behaviour (circling, crouch then leap, stealing and biting, running off, dropping food when killed).
 - `tests/keys.mjs`: the key bindings (defaults, cleaning saved data, rebinding) and how input turns keys into movement, swings and aim.
